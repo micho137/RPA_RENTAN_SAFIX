@@ -1,0 +1,517 @@
+from __future__ import annotations
+import csv
+import logging
+import zipfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Iterable, Optional, Tuple, List, Dict
+import re
+import xml.etree.ElementTree as ET
+
+from PIL import Image
+
+# Fallbacks opcionales
+try:
+    from pdfminer.high_level import extract_text as pdf_extract_text
+except Exception:
+    pdf_extract_text = None
+
+try:
+    from pdf2image import convert_from_path
+except Exception:
+    convert_from_path = None
+
+try:
+    import pytesseract
+except Exception:
+    pytesseract = None
+
+from src.processing.doc_id import normalize_id, parse_any_id, split_parts
+
+NS = {
+    "cbc": "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
+    "cac": "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
+    "inv": "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2",
+}
+
+
+def _clean(s: Optional[str]) -> str:
+    return (s or "").strip()
+
+
+def _to_float(num: str) -> float:
+    s = (num or "").strip()
+    s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except Exception:
+        return 0.0
+
+
+@dataclass
+class ExtractResult:
+    zips: int = 0
+    docs_json: int = 0
+    errors: int = 0
+
+
+class ZipInvoiceExtractor:
+    """
+    Recorre .zip en download_dir, extrae a extract_root/<zipname>/,
+    y para cada documento intenta:
+
+      1) UBL XML (directo o invoice embebido en AttachedDocument) -> JSON
+      2) Si NO hay XML, PDF->texto; si no hay texto, OCR -> JSON
+
+    Guarda:
+      - .json por documento en out_json_root (estructura PLANA: json/<nombre>.json)
+      - .txt (si vino de PDF/OCR) en out_text_root (PLANA: text/<nombre>.txt)
+      - índice CSV (opcional)
+    """
+
+    def __init__(
+        self,
+        download_dir: Path,
+        extract_root: Path,
+        out_json_root: Path,
+        out_text_root: Optional[Path] = None,
+        lang: str = "spa",
+        dpi: int = 300,
+        logger: Optional[logging.Logger] = None,
+    ):
+        self.download_dir = Path(download_dir)
+        self.extract_root = Path(extract_root)
+        self.out_json_root = Path(out_json_root)
+        self.out_text_root = Path(out_text_root) if out_text_root else None
+        self.lang = lang
+        self.dpi = dpi
+        self.log = logger or logging.getLogger("zip_invoice_extractor")
+
+        self.extract_root.mkdir(parents=True, exist_ok=True)
+        self.out_json_root.mkdir(parents=True, exist_ok=True)
+        if self.out_text_root:
+            self.out_text_root.mkdir(parents=True, exist_ok=True)
+
+    # ------------------ ZIP ------------------
+    def iter_zip_files(self) -> Iterable[Path]:
+        for p in sorted(self.download_dir.rglob("*.zip")):
+            if p.is_file():
+                yield p
+
+    def extract_zip(self, zip_path: Path) -> Path:
+        target_dir = self.extract_root / zip_path.stem
+        target_dir.mkdir(parents=True, exist_ok=True)
+        if any(target_dir.iterdir()):
+            self.log.info(f"Skip extract (exists): {target_dir}")
+            return target_dir
+        self.log.info(f"Extract: {zip_path} -> {target_dir}")
+        with zipfile.ZipFile(zip_path, "r") as z:
+            z.extractall(target_dir)
+        return target_dir
+
+    # ------------------ XML (UBL primero) ------------------
+    def parse_invoice_from_ubl(self, xml_path: Path) -> Optional[Dict]:
+        """Soporta <Invoice> directo o AttachedDocument con <Invoice> embebido en Description."""
+        try:
+            root = ET.parse(xml_path).getroot()
+        except Exception as e:
+            self.log.warning(f"Invalid XML {xml_path.name}: {e}")
+            return None
+
+        # a) ¿Invoice directo?
+        if root.tag.endswith("Invoice"):
+            invoice = root
+        else:
+            # b) AttachedDocument con <Invoice> en Description (CDATA)
+            desc = root.find(".//{urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2}Description")
+            if desc is None or not desc.text or "<Invoice" not in desc.text:
+                return None
+            try:
+                invoice = ET.fromstring(desc.text)
+            except Exception as e:
+                self.log.warning(f"Embedded Invoice parse failed in {xml_path.name}: {e}")
+                return None
+
+        # Emisor / Cliente
+        emisor_nombre = _clean(
+            invoice.findtext(
+                ".//cac:AccountingSupplierParty/cac:Party/cac:PartyName/cbc:Name",
+                namespaces=NS,
+            )
+        )
+        emisor_nit = _clean(
+            invoice.findtext(
+                ".//cac:AccountingSupplierParty/cac:PartyTaxScheme/cbc:CompanyID",
+                namespaces=NS,
+            )
+        )
+
+        cliente_nombre = _clean(
+            invoice.findtext(
+                ".//cac:AccountingCustomerParty/cac:Party/cac:PartyName/cbc:Name",
+                namespaces=NS,
+            )
+        )
+        cliente_nit = _clean(
+            invoice.findtext(
+                ".//cac:AccountingCustomerParty/cac:PartyTaxScheme/cbc:CompanyID",
+                namespaces=NS,
+            )
+        )
+        cliente_tel = _clean(
+            invoice.findtext(
+                ".//cac:AccountingCustomerParty/cac:Party/cac:Contact/cbc:Telephone",
+                namespaces=NS,
+            )
+        )
+
+        linea_dir = _clean(
+            invoice.findtext(
+                ".//cac:AccountingCustomerParty/cac:Party/cac:PhysicalLocation/cac:Address/cac:AddressLine/cbc:Line",
+                namespaces=NS,
+            )
+        )
+        ciudad = _clean(
+            invoice.findtext(
+                ".//cac:AccountingCustomerParty/cac:Party/cac:PhysicalLocation/cac:Address/cbc:CityName",
+                namespaces=NS,
+            )
+        )
+        pais = _clean(
+            invoice.findtext(
+                ".//cac:AccountingCustomerParty/cac:Party/cac:PhysicalLocation/cac:Address/cac:Country/cbc:Name",
+                namespaces=NS,
+            )
+        )
+        direccion = ", ".join(
+            [
+                p
+                for p in [
+                    linea_dir,
+                    f"{ciudad} / {pais}" if ciudad and pais else ciudad or pais,
+                ]
+                if p
+            ]
+        )
+
+        # IDs / fechas
+        doc_id_raw = _clean(invoice.findtext("cbc:ID", namespaces=NS))
+        document_id = normalize_id(doc_id_raw) or doc_id_raw or None
+        serie, numero = split_parts(document_id or "")
+        cufe = _clean(invoice.findtext("cbc:UUID", namespaces=NS))
+        issue_date = _clean(invoice.findtext("cbc:IssueDate", namespaces=NS))
+        issue_time = _clean(invoice.findtext("cbc:IssueTime", namespaces=NS))
+        due_date = _clean(
+            invoice.findtext("cac:PaymentMeans/cbc:PaymentDueDate", namespaces=NS)
+        )
+        moneda = _clean(
+            invoice.findtext("cbc:DocumentCurrencyCode", namespaces=NS)
+        ) or "COP"
+
+        # Totales
+        subtotal = _to_float(
+            _clean(
+                invoice.findtext(
+                    "cac:LegalMonetaryTotal/cbc:LineExtensionAmount", namespaces=NS
+                )
+            )
+        )
+        total = _to_float(
+            _clean(
+                invoice.findtext(
+                    "cac:LegalMonetaryTotal/cbc:PayableAmount", namespaces=NS
+                )
+            )
+        )
+
+        # Ítems (mín. uno)
+        line = invoice.find(".//cac:InvoiceLine", namespaces=NS)
+        codigo = _clean(line.findtext("cbc:ID", namespaces=NS)) if line is not None else ""
+        desc = (
+            _clean(
+                line.findtext("cac:Item/cbc:Description", namespaces=NS)
+            )
+            if line is not None
+            else ""
+        )
+        unidad = ""
+        cantidad = 0
+        unitario = 0
+        total_linea = 0
+        if line is not None:
+            qty = line.find("cbc:InvoicedQuantity", namespaces=NS)
+            if qty is not None:
+                unidad = qty.attrib.get("unitCode", "")
+                cantidad = _to_float(qty.text or "0")
+            unitario = _to_float(
+                _clean(line.findtext("cac:Price/cbc:PriceAmount", namespaces=NS))
+            )
+            total_linea = _to_float(
+                _clean(line.findtext("cbc:LineExtensionAmount", namespaces=NS))
+            )
+
+        data = {
+            "document": {
+                "serie": serie,
+                "numero": numero,
+                "document_id": document_id,  # DEFL-######## o DENC-########
+            },
+            "cufe": cufe or None,
+            "cliente": {
+                "nombre": cliente_nombre or None,
+                "nit": cliente_nit or None,
+                "telefono": cliente_tel or None,
+                "direccion": direccion or None,
+            },
+            "emisor": {"nombre": emisor_nombre or None, "nit": emisor_nit or None},
+            "fechas": {
+                "venta": f"{issue_date}T{issue_time}"
+                if issue_date and issue_time
+                else None,
+                "expedicion": None,  # complementable desde PDF si lo necesitas
+                "vencimiento": due_date or None,
+            },
+            "pago": {"metodo": None, "medio": None},  # usualmente en el PDF impreso
+            "moneda": moneda,
+            "totales": {"subtotal": subtotal, "total": total},
+            "detalle": [
+                {
+                    "codigo": codigo or None,
+                    "descripcion": desc or None,
+                    "unidad": unidad or None,
+                    "cantidad": cantidad,
+                    "unitario": unitario,
+                    "total": total_linea,
+                }
+            ],
+        }
+        return data
+
+    # ------------------ PDF→texto/OCR ------------------
+    def pdf_to_text(self, pdf_path: Path) -> str:
+        # Texto embebido
+        if pdf_extract_text is not None:
+            try:
+                txt = pdf_extract_text(str(pdf_path)) or ""
+                if txt and len(txt) > 30:
+                    return txt
+            except Exception as e:
+                self.log.warning(f"pdfminer failed {pdf_path.name}: {e}")
+
+        # Fallback OCR
+        if convert_from_path is None or pytesseract is None:
+            raise RuntimeError(
+                "For PDF OCR install: pdf2image, pytesseract and system deps (poppler, tesseract)."
+            )
+        pages = convert_from_path(str(pdf_path), dpi=self.dpi)
+        chunks: List[str] = []
+        for i, page in enumerate(pages, start=1):
+            if page.mode not in ("RGB", "L"):
+                page = page.convert("RGB")
+            chunks.append(pytesseract.image_to_string(page, lang=self.lang))
+        return "\n\n".join(chunks)
+
+    # ------------------ Regex desde texto (PDF/OCR) ------------------
+    def parse_from_text(self, txt: str) -> Dict:
+        base = {
+            "document": {"serie": None, "numero": None, "document_id": None},
+            "cufe": None,
+            "cliente": {
+                "nombre": None,
+                "nit": None,
+                "telefono": None,
+                "direccion": None,
+            },
+            "emisor": {"nombre": None, "nit": None},
+            "fechas": {
+                "venta": None,
+                "expedicion": None,
+                "vencimiento": None,
+            },
+            "pago": {"metodo": None, "medio": None},
+            "moneda": "COP",
+            "totales": {"subtotal": 0.0, "total": 0.0},
+            "detalle": [],
+        }
+
+        # Doc ID (DEFL/DENC con o sin guion)
+        found = parse_any_id(txt)
+        if found:
+            serie, numero, norm = found
+            base["document"]["serie"] = serie
+            base["document"]["numero"] = numero
+            base["document"]["document_id"] = norm
+
+        # Cliente / Doc / Tel / Dirección (ajusta etiquetas si cambian)
+        m = re.search(r"CLIENTE:\s*(.+)", txt, re.IGNORECASE)
+        if m:
+            base["cliente"]["nombre"] = _clean(m.group(1))
+        m = re.search(r"DOCUMENTO:\s*([\d.]+)", txt, re.IGNORECASE)
+        if m:
+            base["cliente"]["nit"] = _clean(m.group(1)).replace(".", "")
+        m = re.search(r"TELEFONO:\s*([\d\s]+)", txt, re.IGNORECASE)
+        if m:
+            base["cliente"]["telefono"] = _clean(m.group(1)).replace(" ", "")
+        m = re.search(r"DIRECCION:\s*(.+)", txt, re.IGNORECASE)
+        if m:
+            base["cliente"]["direccion"] = _clean(m.group(1))
+
+        # Fechas (dos timestamps: venta y expedición)
+        stamps = re.findall(
+            r"(\d{4}-\d{2}-\d{2})\s*/\s*(\d{2}:\d{2}:\d{2})", txt
+        )
+        if len(stamps) >= 1:
+            base["fechas"]["venta"] = f"{stamps[0][0]}T{stamps[0][1]}"
+        if len(stamps) >= 2:
+            base["fechas"]["expedicion"] = f"{stamps[1][0]}T{stamps[1][1]}"
+        m = re.search(
+            r"Vencimiento:\s*\n?\s*(\d{4}-\d{2}-\d{2})", txt, re.IGNORECASE
+        )
+        if m:
+            base["fechas"]["vencimiento"] = _clean(m.group(1))
+
+        # Pago
+        m = re.search(r"Método de pago:\s*(.+)", txt, re.IGNORECASE)
+        if m:
+            base["pago"]["metodo"] = _clean(m.group(1))
+        m = re.search(r"Medio de pago:\s*(.+)", txt, re.IGNORECASE)
+        if m:
+            base["pago"]["medio"] = _clean(m.group(1))
+
+        # Tabla del ítem (una línea)
+        it = re.search(
+            r"Código\s+Descripción\s+Unidad\s+Cant\s+Unitario\s+Total\s+(\d+)\s+(.+?)\s+(\S+)\s+([\d.,]+)\s+([\d.,]+)\s+([\d.,]+)",
+            txt,
+            re.IGNORECASE | re.DOTALL,
+        )
+        if it:
+            base["detalle"] = [
+                {
+                    "codigo": _clean(it.group(1)),
+                    "descripcion": _clean(it.group(2)),
+                    "unidad": _clean(it.group(3)),
+                    "cantidad": _to_float(it.group(4)),
+                    "unitario": _to_float(it.group(5)),
+                    "total": _to_float(it.group(6)),
+                }
+            ]
+            base["totales"]["subtotal"] = base["detalle"][0]["total"]
+            base["totales"]["total"] = base["detalle"][0]["total"]
+
+        return base
+
+    # ------------------ Guardado ------------------
+    def save_json_for(self, source_path: Path, data: Dict) -> Path:
+        """
+        Guarda el JSON en una estructura PLANA dentro de out_json_root,
+        usando solo el nombre base del archivo de origen.
+
+        Ejemplo:
+            source_path = unzipped/ZIP1/DEFL-12345.xml
+            -> json/DEFL-12345.json
+        """
+        out_json = self.out_json_root / (source_path.stem + ".json")
+        out_json.parent.mkdir(parents=True, exist_ok=True)
+
+        import json
+
+        out_json.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return out_json
+
+    def save_txt_for(self, source_path: Path, text: str) -> Optional[Path]:
+        """
+        Guarda el TXT en una estructura PLANA dentro de out_text_root,
+        usando solo el nombre base del archivo de origen.
+
+        Ejemplo:
+            source_path = unzipped/ZIP1/DEFL-12345.pdf
+            -> text/DEFL-12345.txt
+        """
+        if not self.out_text_root:
+            return None
+
+        out_txt = self.out_text_root / (source_path.stem + ".txt")
+        out_txt.parent.mkdir(parents=True, exist_ok=True)
+        out_txt.write_text(text, encoding="utf-8", errors="ignore")
+        return out_txt
+
+    # ------------------ Proceso principal ------------------
+    def process_all(self, index_csv: Optional[Path] = None) -> ExtractResult:
+        res = ExtractResult()
+        index_rows: List[Dict] = []
+
+        for zip_path in self.iter_zip_files():
+            res.zips += 1
+            try:
+                extracted_dir = self.extract_zip(zip_path)
+            except Exception as e:
+                self.log.error(f"Extract error {zip_path.name}: {e}")
+                res.errors += 1
+                continue
+
+            # 1) Intentar XMLs primero
+            xmls = [p for p in extracted_dir.rglob("*.xml") if p.is_file()]
+            any_xml_ok = False
+            for xml in xmls:
+                data = self.parse_invoice_from_ubl(xml)
+                if not data:
+                    continue
+                any_xml_ok = True
+                out_json = self.save_json_for(xml, data)
+                res.docs_json += 1
+                index_rows.append(
+                    {
+                        "zip": zip_path.name,
+                        "source": str(xml),
+                        "json": str(out_json),
+                        "mode": "XML",
+                        "document_id": data["document"]["document_id"] or "",
+                        "serie": data["document"]["serie"] or "",
+                    }
+                )
+
+            if any_xml_ok:
+                # si prefieres, puedes NO continuar a PDFs para evitar duplicados
+                continue
+
+            # 2) Si no hay XML válido, intentar con los PDFs
+            pdfs = [p for p in extracted_dir.rglob("*.pdf") if p.is_file()]
+            for pdf in pdfs:
+                try:
+                    text = self.pdf_to_text(pdf)
+                    self.save_txt_for(pdf, text)
+                    data = self.parse_from_text(text)
+                    out_json = self.save_json_for(pdf, data)
+                    res.docs_json += 1
+                    index_rows.append(
+                        {
+                            "zip": zip_path.name,
+                            "source": str(pdf),
+                            "json": str(out_json),
+                            "mode": "PDF",
+                            "document_id": data["document"]["document_id"] or "",
+                            "serie": data["document"]["serie"] or "",
+                        }
+                    )
+                except Exception as e:
+                    self.log.error(f"PDF/OCR fail {pdf.name}: {e}")
+                    res.errors += 1
+                    continue
+
+        if index_csv:
+            try:
+                index_csv.parent.mkdir(parents=True, exist_ok=True)
+                with open(index_csv, "w", newline="", encoding="utf-8") as f:
+                    writer = csv.DictWriter(
+                        f,
+                        fieldnames=["zip", "source", "json", "mode", "document_id", "serie"],
+                    )
+                    writer.writeheader()
+                    writer.writerows(index_rows)
+            except Exception as e:
+                self.log.warning(f"Index write failed: {e}")
+
+        return res
