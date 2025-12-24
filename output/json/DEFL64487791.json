@@ -1,0 +1,42 @@
+{
+  "document": {
+    "serie": "DEFL",
+    "numero": "64487791",
+    "document_id": "DEFL64487791"
+  },
+  "cufe": "826eaab3050f9e9c706664b47f12875bc05bdf89f8604513dc507693bc62d83e8e841faf89c2ec698707c73970c4ed2f",
+  "cliente": {
+    "nombre": "Renting de Antioquia EICE",
+    "nit": null,
+    "telefono": "3016904190",
+    "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+  },
+  "emisor": {
+    "nombre": "F2X S.A.S.",
+    "nit": null
+  },
+  "fechas": {
+    "venta": "2025-10-29T05:40:31-05:00",
+    "expedicion": null,
+    "vencimiento": "2025-10-29"
+  },
+  "pago": {
+    "metodo": null,
+    "medio": null
+  },
+  "moneda": "COP",
+  "totales": {
+    "subtotal": 1610000.0,
+    "total": 1610000.0
+  },
+  "detalle": [
+    {
+      "codigo": "1",
+      "descripcion": "Placa: HYT426::Peaje: AMAGA::Categoria: 1::Fecha del paso: 29/10/2025 10:28:11",
+      "unidad": "94",
+      "cantidad": 100.0,
+      "unitario": 1610000.0,
+      "total": 1610000.0
+    }
+  ]
+}

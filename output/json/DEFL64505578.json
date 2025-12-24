@@ -1,0 +1,42 @@
+{
+  "document": {
+    "serie": "DEFL",
+    "numero": "64505578",
+    "document_id": "DEFL64505578"
+  },
+  "cufe": "da6a4c7a98bfaeaea17390a8227522864ccbcd8a113f20ccc4f31dadd4a4cead3da1b2e3add39b1bbb869fec8d5c2c80",
+  "cliente": {
+    "nombre": "Renting de Antioquia EICE",
+    "nit": null,
+    "telefono": "3016904190",
+    "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+  },
+  "emisor": {
+    "nombre": "F2X S.A.S.",
+    "nit": null
+  },
+  "fechas": {
+    "venta": "2025-10-29T07:20:21-05:00",
+    "expedicion": null,
+    "vencimiento": "2025-10-29"
+  },
+  "pago": {
+    "metodo": null,
+    "medio": null
+  },
+  "moneda": "COP",
+  "totales": {
+    "subtotal": 1670000.0,
+    "total": 1670000.0
+  },
+  "detalle": [
+    {
+      "codigo": "1",
+      "descripcion": "Placa: LAX880::Peaje: PEAJE PANDEQUESO::Categoria: A::Fecha del paso: 29/10/2025 12:12:51",
+      "unidad": "94",
+      "cantidad": 100.0,
+      "unitario": 1670000.0,
+      "total": 1670000.0
+    }
+  ]
+}

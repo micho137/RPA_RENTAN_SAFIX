@@ -13,7 +13,19 @@ from pywinauto import Desktop, Application
 from src.config import settings
 
 
-PLACA_REGEX = re.compile(r"Placa:\s*([A-Z0-9]+)", re.IGNORECASE)
+PLACA_REGEX = re.compile(
+    r"\bPLACA\b\s*[:\-]?\s*([A-Z0-9]{5,8})\b",
+    re.IGNORECASE
+)
+
+def _strip_quotes(s: str) -> str:
+    """Quita comillas simples/dobles envolventes si existen."""
+    if not s:
+        return s
+    s = s.strip()
+    if (s.startswith("'") and s.endswith("'")) or (s.startswith('"') and s.endswith('"')):
+        return s[1:-1].strip()
+    return s
 
 
 def load_invoices_by_id(path: Path) -> Dict[str, Any]:
@@ -25,25 +37,48 @@ def load_invoices_by_id(path: Path) -> Dict[str, Any]:
     return data
 
 
-def extract_doc_and_plate(invoice: Dict[str, Any], fallback_plate: str) -> Tuple[str, str]:
+def extract_doc_and_plate(
+    invoice: Dict[str, Any],
+    fallback_plate: str,
+    key_fallback_doc_id: Optional[str] = None,
+) -> Tuple[str, str]:
+    # -------- document_id --------
     doc_id = ((invoice.get("document") or {}).get("document_id")) or ""
     doc_id = str(doc_id).strip()
-    if not doc_id:
-        raise ValueError("Factura sin document_id (no se puede cargar en SAFIX).")
 
-    placa: Optional[str] = None
-    detalles = invoice.get("detalle") or []
-    for item in detalles:
-        desc = (item or {}).get("descripcion") or ""
-        m = PLACA_REGEX.search(desc)
-        if m:
-            placa = m.group(1).strip()
-            break
+    # respaldo: la key del agregado (tu all_invoices_by_id.json está indexado por eso)
+    if not doc_id and key_fallback_doc_id:
+        doc_id = str(key_fallback_doc_id).strip()
+
+    if not doc_id:
+        raise ValueError("Factura sin document_id (ni en JSON ni en la key del agregado).")
+
+    doc_id = doc_id.replace("-", "").strip()
+
+    # -------- placa --------
+    placa = (
+        invoice.get("placa")
+        or (invoice.get("vehiculo") or {}).get("placa")
+        or ""
+    )
+    placa = str(placa).strip()
 
     if not placa:
-        placa = fallback_plate
+        detalles = invoice.get("detalle") or []
+        for item in detalles:
+            desc = str((item or {}).get("descripcion") or "")
+            m = PLACA_REGEX.search(desc)
+            if m:
+                placa = m.group(1).strip()
+                break
 
-    return doc_id.replace("-", ""), placa
+    if not placa:
+        # si el env dice "PLACA HYT426", extraemos solo HYT426
+        m2 = PLACA_REGEX.search(str(fallback_plate))
+        placa = (m2.group(1).strip() if m2 else str(fallback_plate).strip())
+
+    return doc_id, placa
+
 
 
 @dataclass
@@ -73,10 +108,13 @@ class SafixConfig:
 
     @staticmethod
     def from_settings() -> "SafixConfig":
+        # IMPORTANTE: quitar comillas del regex si vienen desde .env
+        title_re = _strip_quotes(getattr(settings, "safix_window_title", ""))
+
         return SafixConfig(
             jnlp_path=settings.safix_shortcut,
-            main_window_title_re=settings.safix_window_title,
-            tesoreria_icon=settings.safix_tesoreria_icon,
+            main_window_title_re=title_re,
+            tesoreria_icon="src/img.png",
             user=settings.safix_user,
             password=settings.safix_pass,
             nit=settings.safix_nit,
@@ -99,9 +137,12 @@ class SafixConfig:
 class SafixAutomator:
     def __init__(self, cfg: SafixConfig) -> None:
         self.cfg = cfg
+        self._main_handle: Optional[int] = None
+
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = self.cfg.pyauto_pause
 
+    # ---------- Ventanas ----------
     def _wait_for_window_win32(self, title_re: str, timeout: float = 60.0, interval: float = 1.0):
         start = time.time()
         desktop = Desktop(backend="win32")
@@ -113,43 +154,70 @@ class SafixAutomator:
             except Exception:
                 pass
             if time.time() - start > timeout:
-                raise TimeoutError(f"No apareció ninguna ventana con título: {title_re}")
+                raise TimeoutError(f"No apareció ninguna ventana con título que matchee: {title_re}")
             time.sleep(interval)
 
     def launch_and_focus_main(self):
         if not self.cfg.jnlp_path or not self.cfg.jnlp_path.exists():
             raise FileNotFoundError(f"No se encontró el JNLP: {self.cfg.jnlp_path}")
+
         import os as _os
         _os.startfile(str(self.cfg.jnlp_path))
 
         main_win = self._wait_for_window_win32(self.cfg.main_window_title_re, timeout=60.0)
+        self._main_handle = int(main_win.handle)  # guardar handle para reenfocar aunque cambie título
+
         app = Application(backend="win32").connect(handle=main_win.handle)
         main_window = app.window(handle=main_win.handle)
         main_window.set_focus()
         return app, main_window
 
     def refocus_main(self):
+        """
+        Reenfoca por handle (robusto si cambia el título dentro de Tesorería).
+        Si no hay handle, cae a búsqueda por título.
+        """
+        desktop = Desktop(backend="win32")
+
+        if self._main_handle is not None:
+            try:
+                win = desktop.window(handle=self._main_handle)
+                if win.exists():
+                    app = Application(backend="win32").connect(handle=win.handle)
+                    window = app.window(handle=win.handle)
+                    window.set_focus()
+                    return app, window
+            except Exception:
+                # Si el handle ya no existe (app cerrada), caemos al método por título
+                pass
+
+        # Fallback: por título
         win = self._wait_for_window_win32(self.cfg.main_window_title_re, timeout=15.0)
+        self._main_handle = int(win.handle)
         app = Application(backend="win32").connect(handle=win.handle)
         window = app.window(handle=win.handle)
         window.set_focus()
         return app, window
 
+    # ---------- Helpers ----------
     def wait(self, t: Optional[float] = None):
         time.sleep(self.cfg.wait_default if t is None else t)
 
     def write_text(self, text: str):
         pyautogui.write(text, interval=self.cfg.write_interval)
 
+    # ---------- Login ----------
     def do_login(self):
+        time.sleep(0.8)
         self.write_text(self.cfg.user)
-        self.wait()
+        time.sleep(0.6)  # igual que tu script que funciona
         pyautogui.press("tab")
-        self.wait()
+        time.sleep(0.6)
         self.write_text(self.cfg.password)
-        self.wait()
+        time.sleep(0.6)
         pyautogui.press("enter")
 
+    # ---------- Tesorería ----------
     def click_tesoreria(self, timeout: float = 30.0, interval: float = 1.0):
         icon_path = Path(self.cfg.tesoreria_icon)
         if not icon_path.exists():
@@ -166,6 +234,7 @@ class SafixAutomator:
 
         raise RuntimeError("No se pudo encontrar el icono de Tesorería en pantalla.")
 
+    # ---------- ALT + P, O, G ----------
     def alt_p_o_g(self):
         pyautogui.keyDown("alt")
         time.sleep(0.1)
@@ -176,8 +245,9 @@ class SafixAutomator:
         pyautogui.press("g")
         time.sleep(0.2)
         pyautogui.keyUp("alt")
-        self.wait(self.cfg.wait_long)
+        time.sleep(1.0)  # igual que tu script que funciona
 
+    # ---------- Proceso por factura ----------
     def procesar_factura(self, document_id: str, placa: str):
         self.alt_p_o_g()
         self.wait()
@@ -188,7 +258,7 @@ class SafixAutomator:
         self.wait(self.cfg.wait_long)
 
         self.write_text(self.cfg.nit)
-        self.wait(self.cfg.wait_popup)
+        time.sleep(2.0)  # igual que tu script que funciona en NIT
         pyautogui.press("enter")
         self.wait(self.cfg.wait_popup)
 
@@ -230,29 +300,30 @@ class SafixAutomator:
         pyautogui.press("enter"); self.wait()
         pyautogui.press("tab"); self.wait()
 
-        for _ in range(9):
+        for _ in range(8):
             pyautogui.press("tab")
         self.wait()
 
         self.write_text(placa)
         self.wait(self.cfg.wait_long)
 
+    # ---------- Bootstrap ----------
     def bootstrap(self):
         self.launch_and_focus_main()
         time.sleep(self.cfg.form_ready_wait)
 
         self.refocus_main()
-        self.wait()
+        time.sleep(0.5)
 
         self.do_login()
         time.sleep(self.cfg.login_wait)
 
+        # OJO: después de login, puede cambiar el título. Por eso reenfocamos por HANDLE.
         self.refocus_main()
-        self.wait()
+        time.sleep(0.5)
 
         self.click_tesoreria()
         self.wait(self.cfg.wait_long)
-
 
 def run_safix_from_aggregated_json():
     cfg = SafixConfig.from_settings()
@@ -263,16 +334,68 @@ def run_safix_from_aggregated_json():
         return
 
     automator = SafixAutomator(cfg)
+
+    print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
+    print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
+
+    # ---------- tomar SOLO la primera factura ----------
+    first_key = sorted(invoices_by_id.keys())[1]
+    first_invoice = invoices_by_id[first_key]
+
+    doc_id, placa = extract_doc_and_plate(
+        first_invoice,
+        fallback_plate=cfg.fallback_placa,
+        key_fallback_doc_id=first_key,
+    )
+
+    print(f"[SAFIX] DEMO → doc_id='{doc_id}' | placa='{placa}' | key='{first_key}'")
+
+    # ---------- abrir SAFIX + login + tesorería ----------
     automator.bootstrap()
 
-    for k in sorted(invoices_by_id.keys()):
-        inv = invoices_by_id[k]
-        doc_id, placa = extract_doc_and_plate(inv, fallback_plate=cfg.fallback_placa)
+    # ---------- asegurar foco antes de ALT ----------
+    automator.refocus_main()
+    time.sleep(0.5)
 
-        automator.refocus_main()
-        automator.wait(0.5)
+    # ---------- procesar UNA sola factura ----------
+    automator.procesar_factura(
+        document_id=doc_id,
+        placa=placa,
+    )
 
-        automator.procesar_factura(document_id=doc_id, placa=placa)
-        automator.wait(cfg.wait_long)
+    print("[SAFIX] DEMO finalizada (una sola factura).")
 
-    print("[SAFIX] Carga finalizada.")
+
+# def run_safix_from_aggregated_json():
+#     cfg = SafixConfig.from_settings()
+#
+#     invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
+#     if not invoices_by_id:
+#         print("[SAFIX] No hay facturas. No se ejecuta.")
+#         return
+#
+#     automator = SafixAutomator(cfg)
+#     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
+#     print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
+#
+#     # muestra 3 ejemplos
+#     for i, (k, inv) in enumerate(invoices_by_id.items()):
+#         if i >= 3:
+#             break
+#         doc_id, placa = extract_doc_and_plate(inv, cfg.fallback_placa, key_fallback_doc_id=k)
+#         print(f"[SAFIX][SAMPLE] key={k} doc_id={doc_id} placa={placa}")
+#
+#     automator.bootstrap()
+#
+#     for k in sorted(invoices_by_id.keys()):
+#         inv = invoices_by_id[k]
+#
+#         doc_id, placa = extract_doc_and_plate(
+#             inv,
+#             fallback_plate=cfg.fallback_placa,
+#             key_fallback_doc_id=k,
+#         )
+#
+#         print(f"[SAFIX] doc_id='{doc_id}' | placa='{placa}' | key='{k}'")
+#
+#     print("[SAFIX] Carga finalizada.")

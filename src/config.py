@@ -44,8 +44,8 @@ class Settings:
     # SAFIX / XENCO (NUEVO)
     # =========================
     safix_shortcut: Path = Path(os.getenv("SAFIX_SHORTCUT", "")).resolve() if os.getenv("SAFIX_SHORTCUT") else Path("")
-    safix_window_title: str = os.getenv("SAFIX_WINDOW_TITLE", r".*XENCO - Administracion del Sistema.*").strip("'").strip('"')
-    safix_tesoreria_icon: str = os.getenv("SAFIX_TESORERIA_ICON", "img.png")
+    safix_window_title: str = r".*XENCO - Administracion del Sistema.*"
+    safix_tesoreria_icon: str = "img.png"
 
     safix_user: str = os.getenv("SAFIX_USER", "")
     safix_pass: str = os.getenv("SAFIX_PASS", "")

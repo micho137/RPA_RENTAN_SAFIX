@@ -1,0 +1,42 @@
+{
+  "document": {
+    "serie": "DEFL",
+    "numero": "64498423",
+    "document_id": "DEFL64498423"
+  },
+  "cufe": "8f4e64743624a6f2ba3d04f32c9a8c78423242babb330eb6f2aa4c830494fff98944686f44405c2644aaa7c557878c2e",
+  "cliente": {
+    "nombre": "Renting de Antioquia EICE",
+    "nit": null,
+    "telefono": "3016904190",
+    "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+  },
+  "emisor": {
+    "nombre": "F2X S.A.S.",
+    "nit": null
+  },
+  "fechas": {
+    "venta": "2025-10-29T06:45:14-05:00",
+    "expedicion": null,
+    "vencimiento": "2025-10-29"
+  },
+  "pago": {
+    "metodo": null,
+    "medio": null
+  },
+  "moneda": "COP",
+  "totales": {
+    "subtotal": 4080000.0,
+    "total": 4080000.0
+  },
+  "detalle": [
+    {
+      "codigo": "1",
+      "descripcion": "Placa: ODR255::Peaje: LOS LLANOS::Categoria: 5::Fecha del paso: 29/10/2025 11:34:25",
+      "unidad": "94",
+      "cantidad": 100.0,
+      "unitario": 4080000.0,
+      "total": 4080000.0
+    }
+  ]
+}

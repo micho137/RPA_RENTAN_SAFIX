@@ -1,0 +1,42 @@
+{
+  "document": {
+    "serie": "DEFL",
+    "numero": "62045618",
+    "document_id": "DEFL62045618"
+  },
+  "cufe": "f6b43181c260d2ec361ad9981a91a131ff3ed4be444730daa0888cea623df5bf438e1451143659847c2c3043b92a1d80",
+  "cliente": {
+    "nombre": "Renting de Antioquia EICE",
+    "nit": null,
+    "telefono": "3016904190",
+    "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+  },
+  "emisor": {
+    "nombre": "F2X S.A.S.",
+    "nit": null
+  },
+  "fechas": {
+    "venta": "2025-10-15T19:26:06-05:00",
+    "expedicion": null,
+    "vencimiento": "2025-10-15"
+  },
+  "pago": {
+    "metodo": null,
+    "medio": null
+  },
+  "moneda": "COP",
+  "totales": {
+    "subtotal": 1610000.0,
+    "total": 1610000.0
+  },
+  "detalle": [
+    {
+      "codigo": "1",
+      "descripcion": "Placa: GEM583::Peaje: AMAGA::Categoria: 1::Fecha del paso: 16/10/2025 00:19:07",
+      "unidad": "94",
+      "cantidad": 100.0,
+      "unitario": 1610000.0,
+      "total": 1610000.0
+    }
+  ]
+}

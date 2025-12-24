@@ -1,0 +1,42 @@
+{
+  "document": {
+    "serie": "DEFL",
+    "numero": "62041732",
+    "document_id": "DEFL62041732"
+  },
+  "cufe": "e3da78f8aef5e81ff08e779057da3d03d50f85a71421841d6aa9d863a10ba7fec968d17cc210ec0c84385b743ebe3bd5",
+  "cliente": {
+    "nombre": "Renting de Antioquia EICE",
+    "nit": null,
+    "telefono": "3016904190",
+    "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+  },
+  "emisor": {
+    "nombre": "F2X S.A.S.",
+    "nit": null
+  },
+  "fechas": {
+    "venta": "2025-10-15T19:01:11-05:00",
+    "expedicion": null,
+    "vencimiento": "2025-10-15"
+  },
+  "pago": {
+    "metodo": null,
+    "medio": null
+  },
+  "moneda": "COP",
+  "totales": {
+    "subtotal": 1760000.0,
+    "total": 1760000.0
+  },
+  "detalle": [
+    {
+      "codigo": "1",
+      "descripcion": "Placa: HYS759::Peaje: PEAJE GUARNE::Categoria: A::Fecha del paso: 15/10/2025 23:52:56",
+      "unidad": "94",
+      "cantidad": 100.0,
+      "unitario": 1760000.0,
+      "total": 1760000.0
+    }
+  ]
+}

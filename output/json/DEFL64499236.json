@@ -1,0 +1,42 @@
+{
+  "document": {
+    "serie": "DEFL",
+    "numero": "64499236",
+    "document_id": "DEFL64499236"
+  },
+  "cufe": "17acbd493d1460429ecda8134c1078b933539a3181028497d4de85b634e75844bd885e7749ebfb5d7412c15cb36240c6",
+  "cliente": {
+    "nombre": "Renting de Antioquia EICE",
+    "nit": null,
+    "telefono": "3016904190",
+    "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+  },
+  "emisor": {
+    "nombre": "F2X S.A.S.",
+    "nit": null
+  },
+  "fechas": {
+    "venta": "2025-10-29T06:50:20-05:00",
+    "expedicion": null,
+    "vencimiento": "2025-10-29"
+  },
+  "pago": {
+    "metodo": null,
+    "medio": null
+  },
+  "moneda": "COP",
+  "totales": {
+    "subtotal": 2500000.0,
+    "total": 2500000.0
+  },
+  "detalle": [
+    {
+      "codigo": "1",
+      "descripcion": "Placa: ESQ376::Peaje: SAJONIA::Categoria: I::Fecha del paso: 29/10/2025 11:39:02",
+      "unidad": "94",
+      "cantidad": 100.0,
+      "unitario": 2500000.0,
+      "total": 2500000.0
+    }
+  ]
+}

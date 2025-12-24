@@ -1,0 +1,42 @@
+{
+  "document": {
+    "serie": "DEFL",
+    "numero": "62057458",
+    "document_id": "DEFL62057458"
+  },
+  "cufe": "e001e1e19d103e3e64215cea0421f85e8e0948898bf7602d9ade6306aa284719855be561de0bd6c2ff76ffe0b08ac8c6",
+  "cliente": {
+    "nombre": "Renting de Antioquia EICE",
+    "nit": null,
+    "telefono": "3016904190",
+    "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+  },
+  "emisor": {
+    "nombre": "F2X S.A.S.",
+    "nit": null
+  },
+  "fechas": {
+    "venta": "2025-10-15T21:00:59-05:00",
+    "expedicion": null,
+    "vencimiento": "2025-10-15"
+  },
+  "pago": {
+    "metodo": null,
+    "medio": null
+  },
+  "moneda": "COP",
+  "totales": {
+    "subtotal": 1290000.0,
+    "total": 1290000.0
+  },
+  "detalle": [
+    {
+      "codigo": "1",
+      "descripcion": "Placa: JPX465::Peaje: PEAJE PALMAS::Categoria: A::Fecha del paso: 16/10/2025 01:55:26",
+      "unidad": "94",
+      "cantidad": 100.0,
+      "unitario": 1290000.0,
+      "total": 1290000.0
+    }
+  ]
+}
