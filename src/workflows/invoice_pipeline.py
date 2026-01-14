@@ -5,13 +5,14 @@ from src.core.logging_config import setup_logger
 from src.workflows.download_attachments import run_download
 from src.processing.zip_invoice_extractor import ZipInvoiceExtractor
 from src.processing.aggregate_json import build_invoices_by_id
-from src.workflows.safix_automation import run_safix_from_aggregated_json
+
+# CAMBIO: usar el runner que recibe excel_path + aggregated_json_path
+from src.workflows.safix_automation import run_safix_with_excel
 
 
 # =========================
 # DIRECTORIO RAÍZ DE SALIDA
 # =========================
-
 OUTPUT_DIR = Path("./output")
 
 EXTRACT_DIR = OUTPUT_DIR / "extract"
@@ -19,7 +20,6 @@ JSON_DIR = OUTPUT_DIR / "json"
 TEXT_DIR = OUTPUT_DIR / "text"
 INDEX_CSV = JSON_DIR / "index.csv"
 
-# Solo este agregado
 AGG_BY_ID_JSON = JSON_DIR / "all_invoices_by_id.json"
 
 
@@ -28,6 +28,8 @@ def run_pipeline(
     lang: str = "spa",
     dpi: int = 300,
     aggregate_by_id: bool = True,
+    excel_path: Path | None = None,          # NUEVO
+    run_safix: bool = True,                   # NUEVO
 ):
     """
     Pipeline completo:
@@ -37,8 +39,11 @@ def run_pipeline(
     - Genera JSON + TXT
     - Indexa resultados
     - Genera SOLO un JSON agregado por document_id: all_invoices_by_id.json
-    Todo queda bajo el directorio `output/`
+    - (Opcional) Ejecuta SAFIX al finalizar usando Excel para INTERFACE/CENTRO DE COSTOS
     """
+
+    # Normalizar output_dir (evita problemas por "working directory" distinto)
+    output_dir = Path(output_dir).resolve()
 
     # ---------- Preparar directorios ----------
     extract_dir = output_dir / "extract"
@@ -70,7 +75,7 @@ def run_pipeline(
         lang=lang,
         dpi=dpi,
         logger=logger,
-        overwrite_json=True,  # <- evita duplicados: mismo document_id => mismo archivo
+        overwrite_json=True,
     )
 
     res = proc.process_all(index_csv=index_csv)
@@ -91,11 +96,29 @@ def run_pipeline(
                 agg_res.written_by_id,
             )
 
-            # ---------- 4) Ejecutar SAFIX al finalizar ----------
-            run_safix_from_aggregated_json()
+            # ---------- 4) Ejecutar SAFIX (si aplica) ----------
+            if run_safix:
+                if excel_path is None:
+                    raise ValueError("run_safix=True pero excel_path=None. Debes seleccionar el Excel desde Flet.")
+
+                excel_path = Path(excel_path).resolve()
+                if not excel_path.exists():
+                    raise FileNotFoundError(f"El Excel no existe: {excel_path}")
+
+                if not agg_by_id_json.exists():
+                    raise FileNotFoundError(f"No se generó el agregado esperado: {agg_by_id_json}")
+
+                logger.info("Running SAFIX with Excel=%s and AggregatedJSON=%s", excel_path, agg_by_id_json)
+
+                # Esto ejecuta SAFIX usando el agregado generado y reemplaza campo_84 por INTERFACE según placa
+                run_safix_with_excel(
+                    excel_path=excel_path,
+                    aggregated_json_path=agg_by_id_json,
+                )
 
         except Exception as e:
             logger.exception("Invoices-by-id or SAFIX failed: %s", e)
+            raise  # importante: que Flet capture el error
 
     return {
         "output_dir": output_dir,

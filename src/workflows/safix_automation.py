@@ -10,6 +10,8 @@ from typing import Any, Dict, Tuple, Optional
 import pyautogui
 from pywinauto import Desktop, Application
 
+from openpyxl import load_workbook
+
 from src.config import settings
 
 
@@ -35,6 +37,67 @@ def load_invoices_by_id(path: Path) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("El archivo all_invoices_by_id.json no es un dict.")
     return data
+
+
+def normalize_placa(s: str) -> str:
+    """Normaliza placa a mayúsculas y sin espacios."""
+    return re.sub(r"\s+", "", str(s or "").strip().upper())
+
+
+def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]:
+    """
+    Lee el Excel y retorna un catálogo por placa:
+      {
+        "ABC123": {"interface": "XXXX", "centro_costos": "YYYY"},
+        ...
+      }
+    Requiere columnas: PLACA, CENTRO DE COSTOS, INTERFACE
+    """
+    if not excel_path.exists():
+        raise FileNotFoundError(f"No existe el Excel de placas: {excel_path}")
+
+    wb = load_workbook(filename=str(excel_path), data_only=True)
+    ws = wb.active  # si está en otra hoja, cámbialo por wb["NombreHoja"]
+
+    # Leer encabezados (primera fila)
+    headers: Dict[str, int] = {}
+    for col_idx, cell in enumerate(ws[1], start=1):
+        h = str(cell.value or "").strip().upper()
+        if h:
+            headers[h] = col_idx
+
+    required = ["PLACA", "CENTRO DE COSTOS", "INTERFACE"]
+    missing = [r for r in required if r not in headers]
+    if missing:
+        raise ValueError(
+            f"El Excel no tiene columnas requeridas {missing}. "
+            f"Encontradas: {list(headers.keys())}"
+        )
+
+    catalog: Dict[str, Dict[str, str]] = {}
+
+    for row_idx in range(2, ws.max_row + 1):
+        placa_val = ws.cell(row=row_idx, column=headers["PLACA"]).value
+        if not placa_val:
+            continue
+
+        placa = normalize_placa(placa_val)
+        if not placa:
+            continue
+
+        centro_costos = ws.cell(row=row_idx, column=headers["CENTRO DE COSTOS"]).value
+        interface = ws.cell(row=row_idx, column=headers["INTERFACE"]).value
+
+        centro_costos_s = str(centro_costos or "").strip()
+        interface_s = str(interface or "").strip()
+
+        # Si hay duplicados de placa, la última fila sobreescribe
+        catalog[placa] = {
+            "centro_costos": centro_costos_s,
+            "interface": interface_s,
+        }
+
+    return catalog
 
 
 def extract_doc_and_plate(
@@ -78,7 +141,6 @@ def extract_doc_and_plate(
         placa = (m2.group(1).strip() if m2 else str(fallback_plate).strip())
 
     return doc_id, placa
-
 
 
 @dataclass
@@ -188,7 +250,6 @@ class SafixAutomator:
                     window.set_focus()
                     return app, window
             except Exception:
-                # Si el handle ya no existe (app cerrada), caemos al método por título
                 pass
 
         # Fallback: por título
@@ -210,7 +271,7 @@ class SafixAutomator:
     def do_login(self):
         time.sleep(0.8)
         self.write_text(self.cfg.user)
-        time.sleep(0.6)  # igual que tu script que funciona
+        time.sleep(0.6)
         pyautogui.press("tab")
         time.sleep(0.6)
         self.write_text(self.cfg.password)
@@ -245,10 +306,13 @@ class SafixAutomator:
         pyautogui.press("g")
         time.sleep(0.2)
         pyautogui.keyUp("alt")
-        time.sleep(1.0)  # igual que tu script que funciona
+        time.sleep(1.0)
 
     # ---------- Proceso por factura ----------
-    def procesar_factura(self, document_id: str, placa: str):
+    def procesar_factura(self, document_id: str, placa: str, interface: str, centro_costos: str):
+        # centro_costos queda disponible (no se usa aún, por solicitud)
+        _ = centro_costos
+
         self.alt_p_o_g()
         self.wait()
 
@@ -258,7 +322,7 @@ class SafixAutomator:
         self.wait(self.cfg.wait_long)
 
         self.write_text(self.cfg.nit)
-        time.sleep(2.0)  # igual que tu script que funciona en NIT
+        time.sleep(2.0)
         pyautogui.press("enter")
         self.wait(self.cfg.wait_popup)
 
@@ -292,7 +356,11 @@ class SafixAutomator:
         pyautogui.press("enter"); self.wait()
 
         pyautogui.press("tab"); self.wait()
-        self.write_text(self.cfg.campo_84); self.wait()
+
+        # REEMPLAZO: campo_84 se llena con INTERFACE por placa, con fallback a cfg.campo_84
+        interface_to_write = (interface or "").strip() or self.cfg.campo_84
+        self.write_text(interface_to_write); self.wait()
+
         pyautogui.press("enter"); self.wait()
         pyautogui.press("enter"); self.wait()
 
@@ -318,14 +386,17 @@ class SafixAutomator:
         self.do_login()
         time.sleep(self.cfg.login_wait)
 
-        # OJO: después de login, puede cambiar el título. Por eso reenfocamos por HANDLE.
         self.refocus_main()
         time.sleep(0.5)
 
         self.click_tesoreria()
         self.wait(self.cfg.wait_long)
 
+
 def run_safix_from_aggregated_json():
+    """
+    Runner original (sin Excel). Se mantiene por compatibilidad.
+    """
     cfg = SafixConfig.from_settings()
 
     invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
@@ -338,7 +409,6 @@ def run_safix_from_aggregated_json():
     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
     print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
 
-    # ---------- tomar SOLO la primera factura ----------
     first_key = sorted(invoices_by_id.keys())[1]
     first_invoice = invoices_by_id[first_key]
 
@@ -350,52 +420,74 @@ def run_safix_from_aggregated_json():
 
     print(f"[SAFIX] DEMO → doc_id='{doc_id}' | placa='{placa}' | key='{first_key}'")
 
-    # ---------- abrir SAFIX + login + tesorería ----------
     automator.bootstrap()
-
-    # ---------- asegurar foco antes de ALT ----------
     automator.refocus_main()
     time.sleep(0.5)
 
-    # ---------- procesar UNA sola factura ----------
     automator.procesar_factura(
         document_id=doc_id,
         placa=placa,
+        interface="",
+        centro_costos="",
     )
 
     print("[SAFIX] DEMO finalizada (una sola factura).")
 
 
-# def run_safix_from_aggregated_json():
-#     cfg = SafixConfig.from_settings()
-#
-#     invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
-#     if not invoices_by_id:
-#         print("[SAFIX] No hay facturas. No se ejecuta.")
-#         return
-#
-#     automator = SafixAutomator(cfg)
-#     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
-#     print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
-#
-#     # muestra 3 ejemplos
-#     for i, (k, inv) in enumerate(invoices_by_id.items()):
-#         if i >= 3:
-#             break
-#         doc_id, placa = extract_doc_and_plate(inv, cfg.fallback_placa, key_fallback_doc_id=k)
-#         print(f"[SAFIX][SAMPLE] key={k} doc_id={doc_id} placa={placa}")
-#
-#     automator.bootstrap()
-#
-#     for k in sorted(invoices_by_id.keys()):
-#         inv = invoices_by_id[k]
-#
-#         doc_id, placa = extract_doc_and_plate(
-#             inv,
-#             fallback_plate=cfg.fallback_placa,
-#             key_fallback_doc_id=k,
-#         )
-#
-#         print(f"[SAFIX] doc_id='{doc_id}' | placa='{placa}' | key='{k}'")
-#
-#     print("[SAFIX] Carga finalizada.")
+def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] = None) -> None:
+    """
+    Ejecuta SAFIX tomando INTERFACE/CENTRO DE COSTOS desde el Excel seleccionado en Flet.
+
+    - excel_path: archivo con columnas PLACA, CENTRO DE COSTOS, INTERFACE
+    - aggregated_json_path: opcional, si quieres sobreescribir cfg.invoices_by_id_path
+    """
+    cfg = SafixConfig.from_settings()
+
+    if aggregated_json_path is not None:
+        cfg.invoices_by_id_path = aggregated_json_path
+
+    plate_catalog = load_plate_catalog_from_excel(excel_path)
+    print(f"[SAFIX] catálogo placas cargado: {len(plate_catalog)} desde {excel_path.resolve()}")
+
+    invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
+    if not invoices_by_id:
+        print("[SAFIX] No hay facturas. No se ejecuta.")
+        return
+
+    automator = SafixAutomator(cfg)
+
+    print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
+    print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
+
+    # DEMO: primera factura (mantengo tu comportamiento)
+    first_key = sorted(invoices_by_id.keys())[1]
+    first_invoice = invoices_by_id[first_key]
+
+    doc_id, placa = extract_doc_and_plate(
+        first_invoice,
+        fallback_plate=cfg.fallback_placa,
+        key_fallback_doc_id=first_key,
+    )
+
+    placa_norm = normalize_placa(placa)
+    row = plate_catalog.get(placa_norm, {})
+    interface = row.get("interface", "")
+    centro_costos = row.get("centro_costos", "")
+
+    print(
+        f"[SAFIX] DEMO → doc_id='{doc_id}' "
+        f"placa='{placa_norm}' interface='{interface}' centro_costos='{centro_costos}'"
+    )
+
+    automator.bootstrap()
+    automator.refocus_main()
+    time.sleep(0.5)
+
+    automator.procesar_factura(
+        document_id=doc_id,
+        placa=placa_norm,
+        interface=interface,
+        centro_costos=centro_costos,
+    )
+
+    print("[SAFIX] DEMO finalizada (una sola factura) con Excel.")
