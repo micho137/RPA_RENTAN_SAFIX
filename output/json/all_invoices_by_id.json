@@ -1,0 +1,862 @@
+{
+  "DEFL62041732": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "62041732",
+      "document_id": "DEFL62041732"
+    },
+    "cufe": "e3da78f8aef5e81ff08e779057da3d03d50f85a71421841d6aa9d863a10ba7fec968d17cc210ec0c84385b743ebe3bd5",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-15T19:01:11-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-15"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1760000.0,
+      "total": 1760000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: HYS759::Peaje: PEAJE GUARNE::Categoria: A::Fecha del paso: 15/10/2025 23:52:56",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1760000.0,
+        "total": 1760000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL62041732.json"
+  },
+  "DEFL62045612": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "62045612",
+      "document_id": "DEFL62045612"
+    },
+    "cufe": "94450918628e0ae7d108aab1c1c5936c79c94c48967290add9e71a62822a65a537fcdec5654558b55b83015ad72ef036",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-15T19:26:06-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-15"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1610000.0,
+      "total": 1610000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: GEM560::Peaje: AMAGA::Categoria: 1::Fecha del paso: 16/10/2025 00:19:00",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1610000.0,
+        "total": 1610000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL62045612.json"
+  },
+  "DEFL62045618": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "62045618",
+      "document_id": "DEFL62045618"
+    },
+    "cufe": "f6b43181c260d2ec361ad9981a91a131ff3ed4be444730daa0888cea623df5bf438e1451143659847c2c3043b92a1d80",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-15T19:26:06-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-15"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1610000.0,
+      "total": 1610000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: GEM583::Peaje: AMAGA::Categoria: 1::Fecha del paso: 16/10/2025 00:19:07",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1610000.0,
+        "total": 1610000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL62045618.json"
+  },
+  "DEFL62050081": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "62050081",
+      "document_id": "DEFL62050081"
+    },
+    "cufe": "3de4e5a83fda6ec3f34c8c8cc70f4e08976690e4f54c6c739d988ce4dc08b72e2dd6d4c1172d1fcfcf0474022e6dd368",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-15T20:00:56-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-15"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1290000.0,
+      "total": 1290000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: JPX465::Peaje: PEAJE PALMAS::Categoria: A::Fecha del paso: 16/10/2025 00:52:28",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1290000.0,
+        "total": 1290000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL62050081.json"
+  },
+  "DEFL62057458": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "62057458",
+      "document_id": "DEFL62057458"
+    },
+    "cufe": "e001e1e19d103e3e64215cea0421f85e8e0948898bf7602d9ade6306aa284719855be561de0bd6c2ff76ffe0b08ac8c6",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-15T21:00:59-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-15"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1290000.0,
+      "total": 1290000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: JPX465::Peaje: PEAJE PALMAS::Categoria: A::Fecha del paso: 16/10/2025 01:55:26",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1290000.0,
+        "total": 1290000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL62057458.json"
+  },
+  "DEFL64487791": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64487791",
+      "document_id": "DEFL64487791"
+    },
+    "cufe": "826eaab3050f9e9c706664b47f12875bc05bdf89f8604513dc507693bc62d83e8e841faf89c2ec698707c73970c4ed2f",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T05:40:31-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1610000.0,
+      "total": 1610000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: HYT426::Peaje: AMAGA::Categoria: 1::Fecha del paso: 29/10/2025 10:28:11",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1610000.0,
+        "total": 1610000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64487791.json"
+  },
+  "DEFL64495950": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64495950",
+      "document_id": "DEFL64495950"
+    },
+    "cufe": "e524c324c507bddd3fc545cd9970b191635118bae25a4f5d8abaea6d50a9a2adaba08b8202e4d4af7816714eabc6fe82",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T06:30:54-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1910000.0,
+      "total": 1910000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: JPX465::Peaje: PEAJE TRAPICHE::Categoria: A::Fecha del paso: 29/10/2025 11:22:12",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1910000.0,
+        "total": 1910000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64495950.json"
+  },
+  "DEFL64496959": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64496959",
+      "document_id": "DEFL64496959"
+    },
+    "cufe": "b8e1e06f23437f93259066f2ff9c3ed1593e764d3a1dd2bd8ad19715413af889845ee44c725e5943f7a94633fafc77b9",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T06:36:05-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1910000.0,
+      "total": 1910000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: LAX880::Peaje: PEAJE TRAPICHE::Categoria: A::Fecha del paso: 29/10/2025 11:27:51",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1910000.0,
+        "total": 1910000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64496959.json"
+  },
+  "DEFL64497850": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64497850",
+      "document_id": "DEFL64497850"
+    },
+    "cufe": "6d596e45c3e422f54d67cc6251038dac46e25dafca45ef7ee7d72c0182e831fca4fc433574f777772973c33fb9438388",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T06:41:12-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 2500000.0,
+      "total": 2500000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: LAX774::Peaje: SAJONIA::Categoria: I::Fecha del paso: 29/10/2025 11:30:52",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 2500000.0,
+        "total": 2500000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64497850.json"
+  },
+  "DEFL64498423": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64498423",
+      "document_id": "DEFL64498423"
+    },
+    "cufe": "8f4e64743624a6f2ba3d04f32c9a8c78423242babb330eb6f2aa4c830494fff98944686f44405c2644aaa7c557878c2e",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T06:45:14-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 4080000.0,
+      "total": 4080000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: ODR255::Peaje: LOS LLANOS::Categoria: 5::Fecha del paso: 29/10/2025 11:34:25",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 4080000.0,
+        "total": 4080000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64498423.json"
+  },
+  "DEFL64499236": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64499236",
+      "document_id": "DEFL64499236"
+    },
+    "cufe": "17acbd493d1460429ecda8134c1078b933539a3181028497d4de85b634e75844bd885e7749ebfb5d7412c15cb36240c6",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T06:50:20-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 2500000.0,
+      "total": 2500000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: ESQ376::Peaje: SAJONIA::Categoria: I::Fecha del paso: 29/10/2025 11:39:02",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 2500000.0,
+        "total": 2500000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64499236.json"
+  },
+  "DEFL64503851": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64503851",
+      "document_id": "DEFL64503851"
+    },
+    "cufe": "41160eeeb22018d87d5fd300090fd1c066c8b1e4f08536d29b9f9f34a12786832a0f9da370be6dc27bbb19d4256d8262",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T07:10:27-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1670000.0,
+      "total": 1670000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: JPX465::Peaje: PEAJE PANDEQUESO::Categoria: A::Fecha del paso: 29/10/2025 12:05:21",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1670000.0,
+        "total": 1670000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64503851.json"
+  },
+  "DEFL64505090": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64505090",
+      "document_id": "DEFL64505090"
+    },
+    "cufe": "9425bfe99c5fe028bcefef87e49ceee0f8c0b219a4f23a83174f84888d83cefc2fb3c910b0b9e6a82ea138a8e4753ebc",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T07:20:14-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1240000.0,
+      "total": 1240000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: HYS758::Peaje: LOS LLANOS::Categoria: 1::Fecha del paso: 29/10/2025 12:10:24",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1240000.0,
+        "total": 1240000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64505090.json"
+  },
+  "DEFL64505578": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64505578",
+      "document_id": "DEFL64505578"
+    },
+    "cufe": "da6a4c7a98bfaeaea17390a8227522864ccbcd8a113f20ccc4f31dadd4a4cead3da1b2e3add39b1bbb869fec8d5c2c80",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T07:20:21-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1670000.0,
+      "total": 1670000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: LAX880::Peaje: PEAJE PANDEQUESO::Categoria: A::Fecha del paso: 29/10/2025 12:12:51",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1670000.0,
+        "total": 1670000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64505578.json"
+  },
+  "DEFL64506701": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64506701",
+      "document_id": "DEFL64506701"
+    },
+    "cufe": "0780974f3d10bd8add72627a76d7c2b3f64e4625ac77b22db801bc1876f0c504be16d24791c493cf4687c42b3f4f3c9e",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T07:25:40-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1910000.0,
+      "total": 1910000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: GEM560::Peaje: PEAJE TRAPICHE::Categoria: A::Fecha del paso: 29/10/2025 12:18:25",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1910000.0,
+        "total": 1910000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64506701.json"
+  },
+  "DEFL64513526": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64513526",
+      "document_id": "DEFL64513526"
+    },
+    "cufe": "96721e004a4c9438764555dfecdf1ed4bc93494e350832065aec74df69d5997d05b90b7a41251fbfa02c73251a1c0293",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T08:00:50-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 2460000.0,
+      "total": 2460000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: GEM560::Peaje: PEAJE CISNEROS::Categoria: A::Fecha del paso: 29/10/2025 12:54:11",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 2460000.0,
+        "total": 2460000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64513526.json"
+  },
+  "DEFL64517201": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64517201",
+      "document_id": "DEFL64517201"
+    },
+    "cufe": "de014333d86c064f36f98e01eb32f83f15a7d63e6508a2432f599ad3cf70b153d35389d4c2caa3ecb17d831e059d935c",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T08:23:52-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1670000.0,
+      "total": 1670000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: HYT983::Peaje: ZARAGOZA::Categoria: A::Fecha del paso: 29/10/2025 13:12:45",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1670000.0,
+        "total": 1670000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64517201.json"
+  },
+  "DEFL64519084": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64519084",
+      "document_id": "DEFL64519084"
+    },
+    "cufe": "6533d51c68aef78ab309168a9f72c71df5ab8fc0b1b81c5e900907040b8077708907d45bc0951e0b38cbcbf9fead9063",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T08:45:21-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1240000.0,
+      "total": 1240000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: LAX880::Peaje: LOS LLANOS::Categoria: 1::Fecha del paso: 29/10/2025 13:23:50",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1240000.0,
+        "total": 1240000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64519084.json"
+  },
+  "DEFL64525858": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64525858",
+      "document_id": "DEFL64525858"
+    },
+    "cufe": "2bbf414874629672bf1d740456d235ee5a48368bd71b894b2222a80922855e2ce253a5068fe7e1982c66a69aa57d7358",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T09:12:42-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1680000.0,
+      "total": 1680000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: GEM560::Peaje: VEGACHI::Categoria: A::Fecha del paso: 29/10/2025 14:02:30",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1680000.0,
+        "total": 1680000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64525858.json"
+  },
+  "DEFL64533966": {
+    "document": {
+      "serie": "DEFL",
+      "numero": "64533966",
+      "document_id": "DEFL64533966"
+    },
+    "cufe": "81954a81e742ac8613448cde6f23c2dde3af3abc05baeea61216f5793aa15a403e02ac47529db48c67d7e90060cf459d",
+    "cliente": {
+      "nombre": "Renting de Antioquia EICE",
+      "nit": null,
+      "telefono": "3016904190",
+      "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+    },
+    "emisor": {
+      "nombre": "F2X S.A.S.",
+      "nit": null
+    },
+    "fechas": {
+      "venta": "2025-10-29T09:58:25-05:00",
+      "expedicion": null,
+      "vencimiento": "2025-10-29"
+    },
+    "pago": {
+      "metodo": null,
+      "medio": null
+    },
+    "moneda": "COP",
+    "totales": {
+      "subtotal": 1610000.0,
+      "total": 1610000.0
+    },
+    "detalle": [
+      {
+        "codigo": "1",
+        "descripcion": "Placa: HYS960::Peaje: AMAGA::Categoria: 1::Fecha del paso: 29/10/2025 14:46:13",
+        "unidad": "94",
+        "cantidad": 100.0,
+        "unitario": 1610000.0,
+        "total": 1610000.0
+      }
+    ],
+    "_source_json": "C:\\Users\\Rentan\\Desktop\\RPA_RENTAN_SAFIX\\output\\json\\DEFL64533966.json"
+  }
+}

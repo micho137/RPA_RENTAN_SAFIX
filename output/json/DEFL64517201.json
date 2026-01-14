@@ -1,0 +1,42 @@
+{
+  "document": {
+    "serie": "DEFL",
+    "numero": "64517201",
+    "document_id": "DEFL64517201"
+  },
+  "cufe": "de014333d86c064f36f98e01eb32f83f15a7d63e6508a2432f599ad3cf70b153d35389d4c2caa3ecb17d831e059d935c",
+  "cliente": {
+    "nombre": "Renting de Antioquia EICE",
+    "nit": null,
+    "telefono": "3016904190",
+    "direccion": "Cra 43A NO.19127, Medellín / Colombia"
+  },
+  "emisor": {
+    "nombre": "F2X S.A.S.",
+    "nit": null
+  },
+  "fechas": {
+    "venta": "2025-10-29T08:23:52-05:00",
+    "expedicion": null,
+    "vencimiento": "2025-10-29"
+  },
+  "pago": {
+    "metodo": null,
+    "medio": null
+  },
+  "moneda": "COP",
+  "totales": {
+    "subtotal": 1670000.0,
+    "total": 1670000.0
+  },
+  "detalle": [
+    {
+      "codigo": "1",
+      "descripcion": "Placa: HYT983::Peaje: ZARAGOZA::Categoria: A::Fecha del paso: 29/10/2025 13:12:45",
+      "unidad": "94",
+      "cantidad": 100.0,
+      "unitario": 1670000.0,
+      "total": 1670000.0
+    }
+  ]
+}
