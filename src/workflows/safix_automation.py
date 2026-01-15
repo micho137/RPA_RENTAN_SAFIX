@@ -148,6 +148,7 @@ class SafixConfig:
     jnlp_path: Path
     main_window_title_re: str
     tesoreria_icon: str
+    valores_icon: str
     user: str
     password: str
 
@@ -177,6 +178,7 @@ class SafixConfig:
             jnlp_path=settings.safix_shortcut,
             main_window_title_re=title_re,
             tesoreria_icon="src/img.png",
+            valores_icon="src/valores.png",
             user=settings.safix_user,
             password=settings.safix_pass,
             nit=settings.safix_nit,
