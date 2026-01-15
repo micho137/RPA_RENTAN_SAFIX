@@ -56,10 +56,6 @@ class Settings:
         else (json_dir / "all_invoices_by_id.json")
     )
 
-    # OCR
-    ocr_lang: str = os.getenv("OCR_LANG", "spa")
-    ocr_dpi: int = int(os.getenv("OCR_DPI", "300"))
-
     # =========================
     # SAFIX / XENCO
     # =========================
@@ -71,13 +67,15 @@ class Settings:
 
     safix_window_title: str = os.getenv("SAFIX_WINDOW_TITLE", r".*XENCO - Administracion del Sistema.*")
 
-    # ICONOS UI (desde .env)
+    # ICONOS UI
     safix_tesoreria_icon: str = os.getenv("SAFIX_TESORERIA_ICON", "img.png")
     safix_valores_icon: str = os.getenv("SAFIX_VALORES_ICON", "img_1.png")
 
+    # Credenciales
     safix_user: str = os.getenv("SAFIX_USER", "")
     safix_pass: str = os.getenv("SAFIX_PASS", "")
 
+    # Negocio / flujo
     safix_nit: str = os.getenv("SAFIX_NIT", "")
     safix_xot_code: str = os.getenv("SAFIX_XOT_CODE", "XOT05")
     safix_got_code: str = os.getenv("SAFIX_GOT_CODE", "GOT")

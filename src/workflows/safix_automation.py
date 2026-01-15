@@ -98,14 +98,14 @@ def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]
 
 
 # =========================
-# Extracción de campos
+# Extracción de campos (doc_id, placa, total)
 # =========================
-def extract_doc_and_plate(
+def extract_doc_plate_and_total(
     invoice: Dict[str, Any],
     fallback_plate: str,
     key_fallback_doc_id: Optional[str] = None,
-) -> Tuple[str, str]:
-    # document_id
+) -> Tuple[str, str, int]:
+    # -------- document_id --------
     doc_id = ((invoice.get("document") or {}).get("document_id")) or ""
     doc_id = str(doc_id).strip()
 
@@ -117,7 +117,7 @@ def extract_doc_and_plate(
 
     doc_id = doc_id.replace("-", "").strip()
 
-    # placa
+    # -------- placa --------
     placa = invoice.get("placa") or (invoice.get("vehiculo") or {}).get("placa") or ""
     placa = str(placa).strip()
 
@@ -133,7 +133,19 @@ def extract_doc_and_plate(
         m2 = PLACA_REGEX.search(str(fallback_plate))
         placa = (m2.group(1).strip() if m2 else str(fallback_plate).strip())
 
-    return doc_id, placa
+    placa = normalize_placa(placa)
+
+    # -------- total (peaje) --------
+    total_val = ((invoice.get("totales") or {}).get("total"))
+    if total_val is None:
+        raise ValueError(f"Factura {doc_id}: no trae totales.total")
+
+    try:
+        total_int = int(float(str(total_val).strip()))
+    except Exception:
+        raise ValueError(f"Factura {doc_id}: totales.total inválido: {total_val!r}")
+
+    return doc_id, placa, total_int
 
 
 def pick_first_invoice(invoices_by_id: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
@@ -164,6 +176,7 @@ class SafixConfig:
     got_code: str
     campo_84: str
     campo_05: str
+    obl_code: str  # OBL_EXCLU (desde .env)
 
     # Timing
     form_ready_wait: float
@@ -197,6 +210,7 @@ class SafixConfig:
             got_code=settings.safix_got_code,
             campo_84=str(settings.safix_campo_84 or ""),
             campo_05=str(settings.safix_campo_05 or ""),
+            obl_code=str(getattr(settings, "safix_obl_code", "OBL_EXCLU") or "OBL_EXCLU"),
             form_ready_wait=settings.safix_form_ready_wait,
             login_wait=settings.safix_login_wait,
             pyauto_pause=settings.safix_pyauto_pause,
@@ -281,8 +295,8 @@ class SafixAutomator:
 
     def write_text_safe(self, text: str):
         """
-        Para campos sensibles (login, NIT, document_id):
-        selecciona todo, borra, escribe más lento y deja un margen.
+        Para campos sensibles (login, NIT, document_id, interface, placa, valores):
+        selecciona todo, borra, escribe más lento y deja margen.
         """
         pyautogui.hotkey("ctrl", "a")
         self.wait(0.2)
@@ -301,9 +315,8 @@ class SafixAutomator:
             pyautogui.press("tab")
             self.wait(wait_each)
 
-    # ---------- Login (ROBUSTO) ----------
+    # ---------- Login (robusto) ----------
     def do_login(self):
-        # Asegurar foco en el form y escribir lento + limpiando
         self.wait(1.2)
         self.write_text_safe(self.cfg.user)
 
@@ -313,7 +326,7 @@ class SafixAutomator:
         self.write_text_safe(self.cfg.password)
         pyautogui.press("enter")
 
-    # ---------- Click imagen (genérica) ----------
+    # ---------- Click imagen ----------
     def click_image(self, image_path: str | Path, timeout: float = 40.0, interval: float = 1.0) -> bool:
         icon_path = Path(image_path)
         if not icon_path.exists():
@@ -333,7 +346,7 @@ class SafixAutomator:
     def click_tesoreria(self):
         return self.click_image(self.cfg.tesoreria_icon)
 
-    # ---------- ALT + P, O, G ----------
+    # ---------- ALT+P,O,G ----------
     def alt_p_o_g(self):
         pyautogui.keyDown("alt")
         time.sleep(0.1)
@@ -347,7 +360,14 @@ class SafixAutomator:
         time.sleep(1.2)
 
     # ---------- Proceso por factura ----------
-    def procesar_factura(self, document_id: str, placa: str, interface: str, centro_costos: str):
+    def procesar_factura(
+        self,
+        document_id: str,
+        placa: str,
+        interface: str,
+        centro_costos: str,
+        peaje_total: int,  # <-- NUEVO
+    ):
         _ = centro_costos  # reservado
 
         self.alt_p_o_g()
@@ -356,18 +376,18 @@ class SafixAutomator:
         # XOT
         self.write_text_safe(self.cfg.xot_code)
         pyautogui.press("enter")
-        self.wait(self.cfg.wait_long * 2)  # carga de pantalla
+        self.wait(self.cfg.wait_long * 2)
 
-        # NIT (PUNTO CRÍTICO)
+        # NIT (punto crítico)
         self.write_text_safe(self.cfg.nit)
         pyautogui.press("enter")
-        self.wait(self.cfg.wait_popup * 2)  # esperar modal/carga lenta
+        self.wait(self.cfg.wait_popup * 2)
 
-        # Confirmaciones iniciales (con waits reales)
+        # Confirmaciones iniciales
         self.press_enter(1, self.cfg.wait_popup)
-        self.press_enter(3, self.cfg.wait_long)
+        self.press_enter(4, self.cfg.wait_long)
 
-        # Document ID (NO saltar)
+        # Document ID (no saltar)
         self.write_text_safe(document_id)
         pyautogui.press("enter")
         self.wait(self.cfg.wait_long)
@@ -382,8 +402,9 @@ class SafixAutomator:
         pyautogui.press("right")
         self.wait(self.cfg.wait_default)
 
-        # GOT
-        self.write_text_safe(self.cfg.got_code)
+        # GOT (IMPORTANTE: SOLO write_text, NO write_text_safe)
+        self.write_text(self.cfg.got_code)
+        self.wait(self.cfg.wait_long)
 
         self.press_tab(2, self.cfg.wait_default)
         self.press_enter(2, self.cfg.wait_long)
@@ -411,6 +432,19 @@ class SafixAutomator:
 
         # Click en valores
         self.click_image(self.cfg.valores_icon)
+
+        # ========= NUEVO: OBL_EXCLU + total(peaje) =========
+        self.wait(self.cfg.wait_popup)
+
+        # escribir OBL_EXCLU (desde .env)
+        self.write_text_safe(self.cfg.obl_code)
+        pyautogui.press("enter")
+        self.wait(self.cfg.wait_long)
+
+        # escribir total
+        self.write_text_safe(str(peaje_total))
+        pyautogui.press("enter")
+        self.wait(self.cfg.wait_long)
 
     # ---------- Bootstrap ----------
     def bootstrap(self):
@@ -448,14 +482,13 @@ def run_safix_from_aggregated_json() -> None:
 
     first_key, first_invoice = pick_first_invoice(invoices_by_id)
 
-    doc_id, placa = extract_doc_and_plate(
+    doc_id, placa, total = extract_doc_plate_and_total(
         first_invoice,
         fallback_plate=cfg.fallback_placa,
         key_fallback_doc_id=first_key,
     )
 
-    placa_norm = normalize_placa(placa)
-    print(f"[SAFIX] DEMO → doc_id='{doc_id}' | placa='{placa_norm}' | key='{first_key}'")
+    print(f"[SAFIX] DEMO → doc_id='{doc_id}' placa='{placa}' total='{total}' key='{first_key}'")
 
     automator.bootstrap()
     automator.refocus_main()
@@ -463,9 +496,10 @@ def run_safix_from_aggregated_json() -> None:
 
     automator.procesar_factura(
         document_id=doc_id,
-        placa=placa_norm,
+        placa=placa,
         interface="",
         centro_costos="",
+        peaje_total=total,
     )
 
     print("[SAFIX] DEMO finalizada (una sola factura).")
@@ -491,20 +525,19 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
 
     first_key, first_invoice = pick_first_invoice(invoices_by_id)
 
-    doc_id, placa = extract_doc_and_plate(
+    doc_id, placa, total = extract_doc_plate_and_total(
         first_invoice,
         fallback_plate=cfg.fallback_placa,
         key_fallback_doc_id=first_key,
     )
 
-    placa_norm = normalize_placa(placa)
-    row = plate_catalog.get(placa_norm, {})
+    row = plate_catalog.get(placa, {})
     interface = row.get("interface", "")
     centro_costos = row.get("centro_costos", "")
 
     print(
-        f"[SAFIX] DEMO → doc_id='{doc_id}' placa='{placa_norm}' "
-        f"interface='{interface}' centro_costos='{centro_costos}'"
+        f"[SAFIX] DEMO → doc_id='{doc_id}' placa='{placa}' "
+        f"interface='{interface}' centro_costos='{centro_costos}' total='{total}'"
     )
 
     automator.bootstrap()
@@ -513,9 +546,10 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
 
     automator.procesar_factura(
         document_id=doc_id,
-        placa=placa_norm,
+        placa=placa,
         interface=interface,
         centro_costos=centro_costos,
+        peaje_total=total,
     )
 
     print("[SAFIX] DEMO finalizada (una sola factura) con Excel.")
