@@ -9,7 +9,7 @@ load_dotenv()
 @dataclass(frozen=True)
 class Settings:
     # =========================
-    # OUTLOOK / DESCARGA (EXISTENTE)
+    # OUTLOOK / DESCARGA
     # =========================
     outlook_account: str = os.getenv("OUTLOOK_ACCOUNT", "")
     source_folder: str = os.getenv("OUTLOOK_FOLDER", "")
@@ -25,27 +25,55 @@ class Settings:
     log_dir: Path = Path(os.getenv("LOG_DIR", "./logs")).resolve()
 
     # =========================
-    # PIPELINE / OUTPUT (NUEVO, SIN ROMPER NADA)
+    # PIPELINE / OUTPUT
     # =========================
     output_dir: Path = Path(os.getenv("OUTPUT_DIR", "./output")).resolve()
 
-    extract_dir: Path = Path(os.getenv("EXTRACT_DIR", "")).resolve() if os.getenv("EXTRACT_DIR") else (output_dir / "extract")
-    json_dir: Path = Path(os.getenv("JSON_DIR", "")).resolve() if os.getenv("JSON_DIR") else (output_dir / "json")
-    text_dir: Path = Path(os.getenv("TEXT_DIR", "")).resolve() if os.getenv("TEXT_DIR") else (output_dir / "text")
+    extract_dir: Path = (
+        Path(os.getenv("EXTRACT_DIR", "")).resolve()
+        if os.getenv("EXTRACT_DIR")
+        else (output_dir / "extract")
+    )
+    json_dir: Path = (
+        Path(os.getenv("JSON_DIR", "")).resolve()
+        if os.getenv("JSON_DIR")
+        else (output_dir / "json")
+    )
+    text_dir: Path = (
+        Path(os.getenv("TEXT_DIR", "")).resolve()
+        if os.getenv("TEXT_DIR")
+        else (output_dir / "text")
+    )
 
-    index_csv: Path = Path(os.getenv("INDEX_CSV", "")).resolve() if os.getenv("INDEX_CSV") else (json_dir / "index.csv")
-    invoices_by_id_path: Path = Path(os.getenv("INVOICES_BY_ID_PATH", "")).resolve() if os.getenv("INVOICES_BY_ID_PATH") else (json_dir / "all_invoices_by_id.json")
+    index_csv: Path = (
+        Path(os.getenv("INDEX_CSV", "")).resolve()
+        if os.getenv("INDEX_CSV")
+        else (json_dir / "index.csv")
+    )
+    invoices_by_id_path: Path = (
+        Path(os.getenv("INVOICES_BY_ID_PATH", "")).resolve()
+        if os.getenv("INVOICES_BY_ID_PATH")
+        else (json_dir / "all_invoices_by_id.json")
+    )
 
-    # OCR (si lo quieres parametrizable desde env)
+    # OCR
     ocr_lang: str = os.getenv("OCR_LANG", "spa")
     ocr_dpi: int = int(os.getenv("OCR_DPI", "300"))
 
     # =========================
-    # SAFIX / XENCO (NUEVO)
+    # SAFIX / XENCO
     # =========================
-    safix_shortcut: Path = Path(os.getenv("SAFIX_SHORTCUT", "")).resolve() if os.getenv("SAFIX_SHORTCUT") else Path("")
-    safix_window_title: str = r".*XENCO - Administracion del Sistema.*"
-    safix_tesoreria_icon: str = "img.png"
+    safix_shortcut: Path = (
+        Path(os.getenv("SAFIX_SHORTCUT", "")).resolve()
+        if os.getenv("SAFIX_SHORTCUT")
+        else Path("")
+    )
+
+    safix_window_title: str = os.getenv("SAFIX_WINDOW_TITLE", r".*XENCO - Administracion del Sistema.*")
+
+    # ICONOS UI (desde .env)
+    safix_tesoreria_icon: str = os.getenv("SAFIX_TESORERIA_ICON", "img.png")
+    safix_valores_icon: str = os.getenv("SAFIX_VALORES_ICON", "img_1.png")
 
     safix_user: str = os.getenv("SAFIX_USER", "")
     safix_pass: str = os.getenv("SAFIX_PASS", "")
@@ -59,19 +87,22 @@ class Settings:
 
     safix_placa: str = os.getenv("SAFIX_PLACA", "PLACA DEFAULT")
 
+    safix_obl_code: str = os.getenv("SAFIX_OBL_CODE", "OBL_EXCLU")
+    safix_obl2_code: str = os.getenv("SAFIX_OBL2_CODE", "OBL_ANTCON")
+
     # Timing / estabilidad pyautogui
-    safix_form_ready_wait: float = float(os.getenv("SAFIX_FORM_READY_WAIT", "25.0"))
-    safix_login_wait: float = float(os.getenv("SAFIX_LOGIN_WAIT", "5.0"))
-    safix_pyauto_pause: float = float(os.getenv("SAFIX_PYAUTO_PAUSE", "0.55"))
-    safix_write_interval: float = float(os.getenv("SAFIX_WRITE_INTERVAL", "0.03"))
-    safix_wait_default: float = float(os.getenv("SAFIX_WAIT_DEFAULT", "0.6"))
-    safix_wait_long: float = float(os.getenv("SAFIX_WAIT_LONG", "1.0"))
-    safix_wait_popup: float = float(os.getenv("SAFIX_WAIT_POPUP", "1.5"))
+    safix_form_ready_wait: float = float(os.getenv("SAFIX_FORM_READY_WAIT", "50.0"))
+    safix_login_wait: float = float(os.getenv("SAFIX_LOGIN_WAIT", "15.0"))
+    safix_pyauto_pause: float = float(os.getenv("SAFIX_PYAUTO_PAUSE", "1.1"))
+    safix_write_interval: float = float(os.getenv("SAFIX_WRITE_INTERVAL", "0.10"))
+    safix_wait_default: float = float(os.getenv("SAFIX_WAIT_DEFAULT", "1.5"))
+    safix_wait_long: float = float(os.getenv("SAFIX_WAIT_LONG", "3.0"))
+    safix_wait_popup: float = float(os.getenv("SAFIX_WAIT_POPUP", "4.0"))
 
 
 settings = Settings()
 
-# Mantener exactamente tu comportamiento actual + agregar los nuevos dirs
+# Dirs
 settings.download_dir.mkdir(parents=True, exist_ok=True)
 settings.log_dir.mkdir(parents=True, exist_ok=True)
 

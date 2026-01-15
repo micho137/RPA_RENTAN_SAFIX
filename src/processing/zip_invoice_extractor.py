@@ -41,12 +41,102 @@ def _clean(s: Optional[str]) -> str:
     return (s or "").strip()
 
 
-def _to_float(num: str) -> float:
-    s = (num or "").strip()
-    s = s.replace(".", "").replace(",", ".")
+def _to_money_int(num: Optional[str]) -> int:
+    """
+    Convierte valores monetarios a entero (pesos), SIN agregar ceros.
+
+    Soporta:
+      - "19.100"       -> 19100      (miles con punto)
+      - "19.100,00"    -> 19100      (miles '.' decimal ',')
+      - "19,100.00"    -> 19100      (miles ',' decimal '.')
+      - "19100.00"     -> 19100      (decimal con punto)
+      - "19100,00"     -> 19100      (decimal con coma)
+      - "1.910.000"    -> 1910000
+      - "1,910,000.00" -> 1910000
+    """
+    if not num:
+        return 0
+
+    s = str(num).strip().replace(" ", "").replace("\u00A0", "")
+    if not s:
+        return 0
+
+    # Mantener solo dígitos, separadores y signo
+    s = re.sub(r"[^\d,.\-+]", "", s)
+
+    # Signo (por si aparece)
+    sign = -1 if s.startswith("-") else 1
+    if s[:1] in "+-":
+        s = s[1:]
+
+    # Caso A: tiene '.' y ',' -> el último separador es el decimal
+    if "." in s and "," in s:
+        if s.rfind(",") > s.rfind("."):
+            # ES/CO: miles '.', decimal ','
+            s = s.replace(".", "")
+            s = s.split(",", 1)[0]  # cortar decimales
+        else:
+            # US: miles ',', decimal '.'
+            s = s.replace(",", "")
+            s = s.split(".", 1)[0]  # cortar decimales
+
+    # Caso B: solo coma
+    elif "," in s:
+        parts = s.split(",")
+        # si es NNNN,dd (2 dígitos) => decimal, cortar
+        if len(parts) == 2 and len(parts[1]) == 2:
+            s = parts[0]
+        else:
+            # si no, asumir miles con coma
+            s = s.replace(",", "")
+
+    # Caso C: solo punto
+    elif "." in s:
+        parts = s.split(".")
+        # si es NNNN.dd (2 dígitos) => decimal, cortar (EVITA 19100.00 -> 1910000)
+        if len(parts) == 2 and len(parts[1]) == 2:
+            s = parts[0]
+        else:
+            # si no, asumir miles con punto (o varios puntos)
+            s = s.replace(".", "")
+
+    # Solo dígitos
+    s = re.sub(r"[^\d]", "", s)
+    if not s:
+        return 0
+
+    return sign * int(s)
+
+
+def _to_qty_float(num: Optional[str]) -> float:
+    """
+    Convierte cantidades (pueden tener decimales) a float de forma robusta.
+    - "1.234,5" -> 1234.5
+    - "1,234.5" -> 1234.5
+    - "0,5"     -> 0.5
+    """
+    if not num:
+        return 0.0
+
+    s = str(num).strip().replace(" ", "").replace("\u00A0", "")
+    if not s:
+        return 0.0
+
+    s = re.sub(r"[^\d,.\-+]", "", s)
+
     try:
+        if "." in s and "," in s:
+            # último separador es decimal
+            if s.rfind(",") > s.rfind("."):
+                s = s.replace(".", "").replace(",", ".")
+            else:
+                s = s.replace(",", "")
+        elif "," in s:
+            s = s.replace(".", "").replace(",", ".")
+        else:
+            s = s.replace(",", "")
         return float(s)
-    except Exception:
+    except ValueError:
         return 0.0
 
 
@@ -91,7 +181,7 @@ class ZipInvoiceExtractor:
         lang: str = "spa",
         dpi: int = 300,
         logger: Optional[logging.Logger] = None,
-        overwrite_json: bool = True,  # <- política por defecto: sobrescribe si llega el mismo document_id
+        overwrite_json: bool = True,
     ):
         self.download_dir = Path(download_dir)
         self.extract_root = Path(extract_root)
@@ -174,25 +264,27 @@ class ZipInvoiceExtractor:
         due_date = _clean(invoice.findtext("cac:PaymentMeans/cbc:PaymentDueDate", namespaces=NS))
         moneda = _clean(invoice.findtext("cbc:DocumentCurrencyCode", namespaces=NS)) or "COP"
 
-        # Totales
-        subtotal = _to_float(_clean(invoice.findtext("cac:LegalMonetaryTotal/cbc:LineExtensionAmount", namespaces=NS)))
-        total = _to_float(_clean(invoice.findtext("cac:LegalMonetaryTotal/cbc:PayableAmount", namespaces=NS)))
+        # Totales (DINERO -> int)
+        subtotal = _to_money_int(_clean(invoice.findtext("cac:LegalMonetaryTotal/cbc:LineExtensionAmount", namespaces=NS)))
+        total = _to_money_int(_clean(invoice.findtext("cac:LegalMonetaryTotal/cbc:PayableAmount", namespaces=NS)))
 
         # Ítems (mínimo 1)
         line = invoice.find(".//cac:InvoiceLine", namespaces=NS)
         codigo = _clean(line.findtext("cbc:ID", namespaces=NS)) if line is not None else ""
         desc = _clean(line.findtext("cac:Item/cbc:Description", namespaces=NS)) if line is not None else ""
         unidad = ""
-        cantidad = 0.0
-        unitario = 0.0
-        total_linea = 0.0
+        cantidad = 0.0  # cantidad puede ser decimal
+        unitario = 0    # dinero int
+        total_linea = 0 # dinero int
+
         if line is not None:
             qty = line.find("cbc:InvoicedQuantity", namespaces=NS)
             if qty is not None:
                 unidad = qty.attrib.get("unitCode", "")
-                cantidad = _to_float(qty.text or "0")
-            unitario = _to_float(_clean(line.findtext("cac:Price/cbc:PriceAmount", namespaces=NS)))
-            total_linea = _to_float(_clean(line.findtext("cbc:LineExtensionAmount", namespaces=NS)))
+                cantidad = _to_qty_float(qty.text or "0")
+
+            unitario = _to_money_int(_clean(line.findtext("cac:Price/cbc:PriceAmount", namespaces=NS)))
+            total_linea = _to_money_int(_clean(line.findtext("cbc:LineExtensionAmount", namespaces=NS)))
 
         data = {
             "document": {
@@ -262,7 +354,7 @@ class ZipInvoiceExtractor:
             "fechas": {"venta": None, "expedicion": None, "vencimiento": None},
             "pago": {"metodo": None, "medio": None},
             "moneda": "COP",
-            "totales": {"subtotal": 0.0, "total": 0.0},
+            "totales": {"subtotal": 0, "total": 0},
             "detalle": [],
         }
 
@@ -319,16 +411,20 @@ class ZipInvoiceExtractor:
             re.IGNORECASE | re.DOTALL,
         )
         if it:
+            cantidad = _to_qty_float(it.group(4))
+            unitario = _to_money_int(it.group(5))
+            total_linea = _to_money_int(it.group(6))
+
             base["detalle"] = [{
                 "codigo": _clean(it.group(1)),
                 "descripcion": _clean(it.group(2)),
                 "unidad": _clean(it.group(3)),
-                "cantidad": _to_float(it.group(4)),
-                "unitario": _to_float(it.group(5)),
-                "total": _to_float(it.group(6)),
+                "cantidad": cantidad,
+                "unitario": unitario,
+                "total": total_linea,
             }]
-            base["totales"]["subtotal"] = base["detalle"][0]["total"]
-            base["totales"]["total"] = base["detalle"][0]["total"]
+            base["totales"]["subtotal"] = total_linea
+            base["totales"]["total"] = total_linea
 
         return base
 
