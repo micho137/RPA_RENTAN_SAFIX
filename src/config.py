@@ -62,8 +62,10 @@ class Settings:
 
     safix_window_title: str = os.getenv("SAFIX_WINDOW_TITLE", r".*XENCO - Administracion del Sistema.*")
 
-    safix_tesoreria_icon: str = os.getenv("SAFIX_TESORERIA_ICON", "img.png")
-    safix_valores_icon: str = os.getenv("SAFIX_VALORES_ICON", "img_1.png")
+    safix_tesoreria_icon: str = os.getenv("SAFIX_TESORERIA_ICON", "assets/img.png")
+    safix_valores_icon: str = os.getenv("SAFIX_VALORES_ICON", "assets/img_1.png")
+    safix_z_icon: str = os.getenv("SAFIX_Z_ICON", "assets/Z.png")
+    safix_engranes_icon: str = os.getenv("SAFIX_ENGRANES_ICON", "assets/engranes.png")
 
     safix_user: str = os.getenv("SAFIX_USER", "")
     safix_pass: str = os.getenv("SAFIX_PASS", "")
@@ -74,7 +76,7 @@ class Settings:
 
     safix_campo_84: str = os.getenv("SAFIX_CAMPO_84", "84")
     safix_campo_05: str = os.getenv("SAFIX_CAMPO_05", "05")
-    safix_placa: str = os.getenv("SAFIX_PLACA", "PLACA DEFAULT")
+    safix_placa: str = os.getenv("SAFIX_PLACA")
 
     safix_obl_code: str = os.getenv("SAFIX_OBL_CODE", "OBL_EXCLU")
     safix_obl2_code: str = os.getenv("SAFIX_OBL2_CODE", "OBL_ANTCON")

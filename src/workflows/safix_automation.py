@@ -167,6 +167,8 @@ class SafixConfig:
     # UI (icons)
     tesoreria_icon: Path
     valores_icon: Path
+    z_icon: Path
+    engranes_icon: Path
 
     # Credenciales / negocio
     user: str
@@ -196,14 +198,18 @@ class SafixConfig:
     def from_settings() -> "SafixConfig":
         title_re = _strip_quotes(getattr(settings, "safix_window_title", ""))
 
-        tesoreria_icon = Path(getattr(settings, "safix_tesoreria_icon", "img.png"))
-        valores_icon = Path(getattr(settings, "safix_valores_icon", "img_1.png"))
+        tesoreria_icon = Path(getattr(settings, "safix_tesoreria_icon"))
+        valores_icon = Path(getattr(settings, "safix_valores_icon"))
+        z_icon = Path(getattr(settings, "safix_z_icon"))
+        engranes_icon = Path(getattr(settings, "safix_engranes_icon"))
 
         return SafixConfig(
             jnlp_path=settings.safix_shortcut,
             main_window_title_re=title_re,
             tesoreria_icon=tesoreria_icon,
             valores_icon=valores_icon,
+            z_icon=z_icon,
+            engranes_icon=engranes_icon,
             user=settings.safix_user,
             password=settings.safix_pass,
             nit=str(settings.safix_nit or ""),
@@ -361,6 +367,22 @@ class SafixAutomator:
         pyautogui.keyUp("alt")
         time.sleep(1.2)
 
+    # ---------- Escribir en modal CTRL + L ----------
+    def escribir_modal(self, text_str: str):
+        # Navegación
+        pyautogui.hotkey("ctrl", "l")
+        self.wait(self.cfg.wait_default)
+        self.press_tab(4, self.cfg.wait_default)
+        pyautogui.press("right")
+        self.wait(self.cfg.wait_default)
+
+        # GOT (IMPORTANTE: SOLO write_text, NO write_text_safe)
+        self.write_text(text_str)
+        self.wait(self.cfg.wait_long)
+
+        # Confirmación
+        self.press_enter(2, self.cfg.wait_long)
+
     # ---------- Proceso por factura ----------
     def procesar_factura(
         self,
@@ -378,12 +400,12 @@ class SafixAutomator:
         # XOT
         self.write_text_safe(self.cfg.xot_code)
         pyautogui.press("enter")
-        self.wait(self.cfg.wait_long * 2)
+        self.wait(self.cfg.wait_long * 1.3)
 
         # NIT (punto crítico)
         self.write_text_safe(self.cfg.nit)
         pyautogui.press("enter")
-        self.wait(self.cfg.wait_popup * 2)
+        self.wait(self.cfg.wait_popup * 1.3)
 
         # Confirmaciones iniciales
         self.press_enter(1, self.cfg.wait_popup)
@@ -397,19 +419,21 @@ class SafixAutomator:
         # Confirmaciones posteriores
         self.press_enter(3, self.cfg.wait_long)
 
+        # GOT
+        self.escribir_modal(self.cfg.got_code)
         # Navegación
-        pyautogui.hotkey("ctrl", "l")
-        self.wait(self.cfg.wait_default)
-        self.press_tab(4, self.cfg.wait_default)
-        pyautogui.press("right")
-        self.wait(self.cfg.wait_default)
-
-        # GOT (IMPORTANTE: SOLO write_text, NO write_text_safe)
-        self.write_text(self.cfg.got_code)
-        self.wait(self.cfg.wait_long)
-
-        self.press_tab(2, self.cfg.wait_default)
-        self.press_enter(2, self.cfg.wait_long)
+        # pyautogui.hotkey("ctrl", "l")
+        # self.wait(self.cfg.wait_default)
+        # self.press_tab(4, self.cfg.wait_default)
+        # pyautogui.press("right")
+        # self.wait(self.cfg.wait_default)
+        #
+        # # GOT (IMPORTANTE: SOLO write_text, NO write_text_safe)
+        # self.write_text(self.cfg.got_code)
+        # self.wait(self.cfg.wait_long)
+        #
+        # #self.press_tab(2, self.cfg.wait_default)
+        # self.press_enter(2, self.cfg.wait_long)
 
         self.press_tab(1, self.cfg.wait_default)
 
@@ -430,7 +454,7 @@ class SafixAutomator:
 
         # Placa
         self.write_text_safe(placa)
-        self.wait(self.cfg.wait_long * 2)
+        self.wait(self.cfg.wait_long * 1.3)
 
         # Click en valores
         self.click_image(self.cfg.valores_icon)
@@ -459,7 +483,18 @@ class SafixAutomator:
         self.wait(self.cfg.wait_long)
 
         # hacer clic en imagen Z
+        self.click_image(self.cfg.z_icon)
+        self.wait(self.cfg.wait_long)
+        self.press_tab(4, self.cfg.wait_long)
+        self.escribir_modal(self.cfg.got_code)
+        #self.write_text_safe(self.cfg.got_code)
+        self.wait(self.cfg.wait_long)
 
+        # Cerrar transaccion
+        self.click_image(self.cfg.engranes_icon)
+        self.wait(self.cfg.wait_long)
+        self.press_enter(1, self.cfg.wait_long)
+        self.wait(self.cfg.wait_default)
 
     # ---------- Bootstrap ----------
     def bootstrap(self):
