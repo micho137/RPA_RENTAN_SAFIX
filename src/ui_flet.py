@@ -1,4 +1,4 @@
-# ui_flet.py
+# src/ui_flet.py
 import threading
 from datetime import datetime, date
 from pathlib import Path
@@ -16,6 +16,9 @@ EXPECTED_HEADERS = ["N° VEHICULO", "PLACA", "UBICACIÓN", "CENTRO DE COSTOS", "
 
 
 def main(page: ft.Page):
+    # ===============================
+    # CONFIGURACIÓN DE VENTANA
+    # ===============================
     page.title = "Parámetros de consulta"
     page.padding = 15
     page.scroll = None
@@ -23,6 +26,7 @@ def main(page: ft.Page):
     BASE_W, BASE_H = 720, 600
     EXP_W, EXP_H = 860, 720
 
+    # Compatibilidad entre versiones (API vieja / nueva)
     try:
         page.window.resizable = False
         page.window_width = BASE_W
@@ -46,8 +50,17 @@ def main(page: ft.Page):
 
     center_window_best_effort()
 
-    def fmt_date(d):
+    # ===============================
+    # HELPERS (UI)
+    # ===============================
+    def fmt_date(d: date) -> str:
         return d.strftime(DATE_FMT)
+
+    def to_date(v) -> date:
+        """Convierte date|datetime a date (Flet a veces retorna datetime)."""
+        if isinstance(v, datetime):
+            return v.date()
+        return v
 
     def expand_window():
         try:
@@ -71,7 +84,9 @@ def main(page: ft.Page):
         except Exception:
             pass
 
-    # ---------------- VALIDACIÓN EXCEL ----------------
+    # ===============================
+    # HELPERS (VALIDACIÓN EXCEL)
+    # ===============================
     def normalize_header(v) -> str:
         s = "" if v is None else str(v)
         s = s.replace("\u00a0", " ").strip()
@@ -87,6 +102,13 @@ def main(page: ft.Page):
     EXPECTED_HEADERS_NORM = [normalize_header(h) for h in EXPECTED_HEADERS]
 
     def validate_excel_file(path_str: str) -> tuple[bool, str]:
+        """
+        Valida:
+        1) Existe
+        2) Nombre exacto
+        3) Extensión .xlsx
+        4) Cabeceras A1:E1
+        """
         p = Path(path_str)
 
         if not path_str.strip():
@@ -127,10 +149,12 @@ def main(page: ft.Page):
         except Exception as ex:
             return False, f"No se pudo leer el Excel para validar cabeceras. Detalle: {ex}"
 
-    # ---------------- FILE PICKER ----------------
+    # ===============================
+    # SELECTOR DE ARCHIVO (EXCEL)
+    # ===============================
     selected_file_txt = ft.Text(value="", selectable=True)
 
-    def on_file_picked(e):
+    def on_file_picked(e: ft.FilePickerResultEvent):
         if e.files:
             selected_file_txt.value = e.files[0].path
         else:
@@ -147,17 +171,28 @@ def main(page: ft.Page):
             allowed_extensions=["xlsx"],
         )
 
-    from datetime import datetime, date
-
-    def to_date(v) -> date:
-        if isinstance(v, datetime):
-            return v.date()
-        return v  # ya es date
-
-    # ---------------- FECHAS ----------------
+    # ===============================
+    # FECHAS (DESDE / HASTA)
+    # ===============================
     today = datetime.now().date()
     selected_start: date = today
     selected_end: date = today
+
+    # TextFields (referencias actualizables)
+    start_tf = ft.TextField(
+        label="Fecha inicial",
+        value=fmt_date(selected_start),
+        read_only=True,
+        width=280,
+        dense=True,
+    )
+    end_tf = ft.TextField(
+        label="Fecha final",
+        value=fmt_date(selected_end),
+        read_only=True,
+        width=280,
+        dense=True,
+    )
 
     def clamp_range():
         nonlocal selected_start, selected_end
@@ -166,27 +201,32 @@ def main(page: ft.Page):
 
     def on_dp_desde_change(e):
         nonlocal selected_start
-        if dp_desde.value:
-            selected_start = to_date(dp_desde.value)
+        val = getattr(e.control, "value", None) or getattr(dp_desde, "value", None)
+        if val:
+            selected_start = to_date(val)
             clamp_range()
             refresh()
+            page.update()
         restore_window()
 
     def on_dp_hasta_change(e):
         nonlocal selected_end
-        if dp_hasta.value:
-            selected_end = to_date(dp_hasta.value)
+        val = getattr(e.control, "value", None) or getattr(dp_hasta, "value", None)
+        if val:
+            selected_end = to_date(val)
             clamp_range()
             refresh()
+            page.update()
         restore_window()
 
     def build_datepicker(on_change_cb, on_dismiss_cb):
         kwargs = dict(
             first_date=date(2000, 1, 1),
-            last_date=date(2100, 12, 31),
+            last_date=today,  # ✅ No permite fechas futuras
             on_change=on_change_cb,
             on_dismiss=on_dismiss_cb,
         )
+        # Algunas versiones soportan locale; probamos sin romper
         try:
             return ft.DatePicker(locale="es", **kwargs)
         except TypeError:
@@ -209,14 +249,18 @@ def main(page: ft.Page):
         expand_window()
         page.open(dp_hasta)
 
-    # ---------------- CONTROLES ----------------
+    # ===============================
+    # CONTROLES
+    # ===============================
     only_unread_cb = ft.Checkbox(label="Solo no leídos", value=False)
     mark_as_read_cb = ft.Checkbox(label="Marcar como leídos", value=False)
     move_to_processed_cb = ft.Checkbox(label="Mover a procesados", value=False)
 
     status = ft.Text(value="", color=ft.Colors.RED_700)
 
-    # ---------------- BOTONES ----------------
+    # ===============================
+    # BOTONES
+    # ===============================
     load_excel_btn = ft.ElevatedButton(
         "Cargar archivo Excel",
         icon=ft.Icons.UPLOAD_FILE,
@@ -229,13 +273,19 @@ def main(page: ft.Page):
     )
     run_btn.disabled = True
 
-    def set_status(msg, is_error=False):
+    def set_status(msg: str, is_error: bool = False):
         status.value = msg
         status.color = ft.Colors.RED_700 if is_error else ft.Colors.GREEN_700
         page.update()
 
-    # ---------------- REFRESH UI ----------------
+    # ===============================
+    # REFRESH UI
+    # ===============================
     def refresh(_=None):
+        # ✅ Asegura que el UI muestre fechas actuales
+        start_tf.value = fmt_date(selected_start)
+        end_tf.value = fmt_date(selected_end)
+
         excel_path = (selected_file_txt.value or "").strip()
         if not excel_path:
             run_btn.disabled = True
@@ -256,12 +306,14 @@ def main(page: ft.Page):
     mark_as_read_cb.on_change = refresh
     move_to_processed_cb.on_change = refresh
 
-    # ---------------- EJECUCIÓN ----------------
+    # ===============================
+    # EJECUCIÓN PIPELINE + SAFIX
+    # ===============================
     def run_job(excel_path_str: str):
         try:
             set_status("Ejecutando pipeline (descarga / extracción / agregación)...")
 
-            # ✅ flags calculados desde UI
+            # Flags dinámicos desde UI
             days_back = max(0, (selected_end - selected_start).days)
             only_unread = bool(only_unread_cb.value)
             mark_as_read = bool(mark_as_read_cb.value)
@@ -274,8 +326,6 @@ def main(page: ft.Page):
                 aggregate_by_id=True,
                 excel_path=Path(excel_path_str),
                 run_safix=True,
-
-                # ✅ NUEVO: flags dinámicos
                 only_unread=only_unread,
                 days_back=days_back,
                 mark_as_read=mark_as_read,
@@ -309,7 +359,9 @@ def main(page: ft.Page):
 
     run_btn.on_click = on_run_click
 
-    # ---------------- LAYOUT ----------------
+    # ===============================
+    # LAYOUT
+    # ===============================
     page.add(
         ft.Column(
             spacing=14,
@@ -322,13 +374,7 @@ def main(page: ft.Page):
                             ft.Text("Fechas de consulta", weight=ft.FontWeight.W_600),
                             ft.Row(
                                 controls=[
-                                    ft.TextField(
-                                        label="Fecha inicial",
-                                        value=fmt_date(selected_start),
-                                        read_only=True,
-                                        width=280,
-                                        dense=True,
-                                    ),
+                                    start_tf,
                                     ft.IconButton(
                                         icon=ft.Icons.CALENDAR_MONTH,
                                         tooltip="Elegir fecha inicial",
@@ -338,13 +384,7 @@ def main(page: ft.Page):
                             ),
                             ft.Row(
                                 controls=[
-                                    ft.TextField(
-                                        label="Fecha final",
-                                        value=fmt_date(selected_end),
-                                        read_only=True,
-                                        width=280,
-                                        dense=True,
-                                    ),
+                                    end_tf,
                                     ft.IconButton(
                                         icon=ft.Icons.CALENDAR_MONTH,
                                         tooltip="Elegir fecha final",
