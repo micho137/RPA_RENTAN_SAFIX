@@ -151,7 +151,7 @@ def extract_doc_plate_and_total(
 def pick_first_invoice(invoices_by_id: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     if not invoices_by_id:
         raise ValueError("No hay facturas en el agregado.")
-    first_key = sorted(invoices_by_id.keys())[0]
+    first_key = sorted(invoices_by_id.keys())[14]
     return first_key, invoices_by_id[first_key]
 
 
