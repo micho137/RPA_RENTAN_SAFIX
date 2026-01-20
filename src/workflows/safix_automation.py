@@ -176,7 +176,8 @@ class SafixConfig:
     got_code: str
     campo_84: str
     campo_05: str
-    obl_code: str  # OBL_EXCLU (desde .env)
+    obl_code: str
+    obl2_code: str
 
     # Timing
     form_ready_wait: float
@@ -211,6 +212,7 @@ class SafixConfig:
             campo_84=str(settings.safix_campo_84 or ""),
             campo_05=str(settings.safix_campo_05 or ""),
             obl_code=str(getattr(settings, "safix_obl_code", "OBL_EXCLU") or "OBL_EXCLU"),
+            obl2_code=str(getattr(settings,"safix_obl2_code","OBL_ANTCON") or "OBL_ANTCON"),
             form_ready_wait=settings.safix_form_ready_wait,
             login_wait=settings.safix_login_wait,
             pyauto_pause=settings.safix_pyauto_pause,
@@ -443,8 +445,21 @@ class SafixAutomator:
 
         # escribir total
         self.write_text_safe(str(peaje_total))
+        self.press_enter(2, self.cfg.wait_long)
+        self.wait(self.cfg.wait_long)
+
+        # escribir OBL_ANTCON
+        self.write_text_safe(self.cfg.obl2_code)
         pyautogui.press("enter")
         self.wait(self.cfg.wait_long)
+
+        # escribir total
+        self.write_text_safe(str(peaje_total))
+        self.press_enter(2, self.cfg.wait_long)
+        self.wait(self.cfg.wait_long)
+
+        # hacer clic en imagen Z
+
 
     # ---------- Bootstrap ----------
     def bootstrap(self):
