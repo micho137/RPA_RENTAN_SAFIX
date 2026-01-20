@@ -1,46 +1,136 @@
-import os
+# ui_flet.py
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime, date
 from pathlib import Path
+import unicodedata
 
 import flet as ft
+from openpyxl import load_workbook
 
 from src.workflows.invoice_pipeline import run_pipeline
 
 DATE_FMT = "%d/%m/%Y"
 
+ALLOWED_EXCEL_BASENAME = "Centros de Costos Vehiculos"
+EXPECTED_HEADERS = ["N° VEHICULO", "PLACA", "UBICACIÓN", "CENTRO DE COSTOS", "INTERFACE"]
+
 
 def main(page: ft.Page):
-    page.title = "Query Parameters"
-    page.padding = 20
-    page.scroll = ft.ScrollMode.AUTO
+    page.title = "Parámetros de consulta"
+    page.padding = 15
+    page.scroll = None
 
-    # ---- Window sizing (cross-version best-effort) ----
-    target_w, target_h = 720, 570
+    BASE_W, BASE_H = 720, 600
+    EXP_W, EXP_H = 860, 720
 
-    # Old API (some versions)
     try:
         page.window.resizable = False
-        page.window_width = target_w
-        page.window_height = target_h
+        page.window_width = BASE_W
+        page.window_height = BASE_H
     except Exception:
         pass
 
-    # New API (some versions)
     if hasattr(page, "window") and page.window is not None:
         try:
-            page.window.width = target_w
-            page.window.height = target_h
+            page.window.width = BASE_W
+            page.window.height = BASE_H
             page.window.resizable = False
         except Exception:
             pass
 
-    # ===============================
-    # FILE PICKER (Excel)
-    # ===============================
+    def center_window_best_effort():
+        try:
+            page.window.center()
+        except Exception:
+            pass
+
+    center_window_best_effort()
+
+    def fmt_date(d):
+        return d.strftime(DATE_FMT)
+
+    def expand_window():
+        try:
+            if hasattr(page, "window") and page.window is not None:
+                if (page.window.width, page.window.height) != (EXP_W, EXP_H):
+                    page.window.width = EXP_W
+                    page.window.height = EXP_H
+                    center_window_best_effort()
+                    page.update()
+        except Exception:
+            pass
+
+    def restore_window():
+        try:
+            if hasattr(page, "window") and page.window is not None:
+                if (page.window.width, page.window.height) != (BASE_W, BASE_H):
+                    page.window.width = BASE_W
+                    page.window.height = BASE_H
+                    center_window_best_effort()
+                    page.update()
+        except Exception:
+            pass
+
+    # ---------------- VALIDACIÓN EXCEL ----------------
+    def normalize_header(v) -> str:
+        s = "" if v is None else str(v)
+        s = s.replace("\u00a0", " ").strip()
+        s = " ".join(s.split())
+        s = s.replace("Nº", "N°").replace("No.", "N°").replace("No", "N°")
+        s = s.upper()
+        s = "".join(
+            ch for ch in unicodedata.normalize("NFKD", s)
+            if not unicodedata.combining(ch)
+        )
+        return s
+
+    EXPECTED_HEADERS_NORM = [normalize_header(h) for h in EXPECTED_HEADERS]
+
+    def validate_excel_file(path_str: str) -> tuple[bool, str]:
+        p = Path(path_str)
+
+        if not path_str.strip():
+            return False, "Seleccione un archivo Excel."
+
+        if not p.exists():
+            return False, "El archivo seleccionado no existe."
+
+        if p.suffix.lower() != ".xlsx":
+            return False, "El archivo debe ser .xlsx para validar cabeceras (guárdalo como .xlsx)."
+
+        if p.stem != ALLOWED_EXCEL_BASENAME:
+            return False, "El archivo debe llamarse exactamente: 'Centros de Costos Vehiculos.xlsx'."
+
+        try:
+            wb = load_workbook(filename=str(p), read_only=True, data_only=True)
+            ws = wb.active
+
+            first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
+            if not first_row:
+                return False, "El archivo no tiene cabeceras en la fila 1."
+
+            headers = list(first_row[: len(EXPECTED_HEADERS)])
+            headers_norm = [normalize_header(h) for h in headers]
+
+            if headers_norm != EXPECTED_HEADERS_NORM:
+                esperado = " | ".join(EXPECTED_HEADERS)
+                encontrado = " | ".join("" if h is None else str(h) for h in headers)
+                return (
+                    False,
+                    "Las cabeceras no coinciden.\n"
+                    f"Esperado (A1:E1): {esperado}\n"
+                    f"Encontrado (A1:E1): {encontrado}"
+                )
+
+            return True, ""
+
+        except Exception as ex:
+            return False, f"No se pudo leer el Excel para validar cabeceras. Detalle: {ex}"
+
+    # ---------------- FILE PICKER ----------------
     selected_file_txt = ft.Text(value="", selectable=True)
 
-    def on_file_picked(e: ft.FilePickerResultEvent):
+    def on_file_picked(e):
         if e.files:
             selected_file_txt.value = e.files[0].path
         else:
@@ -54,125 +144,129 @@ def main(page: ft.Page):
     def open_file_picker(_):
         file_picker.pick_files(
             allow_multiple=False,
-            allowed_extensions=["xlsx", "xls"],
+            allowed_extensions=["xlsx"],
         )
 
-    # --- Helpers ---
-    def parse_int(value: str, default: int = 0) -> int:
+    from datetime import datetime, date
+
+    def to_date(v) -> date:
+        if isinstance(v, datetime):
+            return v.date()
+        return v  # ya es date
+
+    # ---------------- FECHAS ----------------
+    today = datetime.now().date()
+    selected_start: date = today
+    selected_end: date = today
+
+    def clamp_range():
+        nonlocal selected_start, selected_end
+        if selected_end < selected_start:
+            selected_end = selected_start
+
+    def on_dp_desde_change(e):
+        nonlocal selected_start
+        if dp_desde.value:
+            selected_start = to_date(dp_desde.value)
+            clamp_range()
+            refresh()
+        restore_window()
+
+    def on_dp_hasta_change(e):
+        nonlocal selected_end
+        if dp_hasta.value:
+            selected_end = to_date(dp_hasta.value)
+            clamp_range()
+            refresh()
+        restore_window()
+
+    def build_datepicker(on_change_cb, on_dismiss_cb):
+        kwargs = dict(
+            first_date=date(2000, 1, 1),
+            last_date=date(2100, 12, 31),
+            on_change=on_change_cb,
+            on_dismiss=on_dismiss_cb,
+        )
         try:
-            v = int((value or "").strip())
-            return max(0, v)
-        except Exception:
-            return default
+            return ft.DatePicker(locale="es", **kwargs)
+        except TypeError:
+            try:
+                return ft.DatePicker(locale="es-ES", **kwargs)
+            except TypeError:
+                return ft.DatePicker(**kwargs)
 
-    def compute_range(days_back: int) -> tuple[str, str]:
-        today = datetime.now().date()
-        start = today - timedelta(days=days_back)
-        return start.strftime(DATE_FMT), today.strftime(DATE_FMT)
+    dp_desde = build_datepicker(on_dp_desde_change, lambda e: restore_window())
+    dp_hasta = build_datepicker(on_dp_hasta_change, lambda e: restore_window())
 
-    def render_env(only_unread: bool, days_back: int, mark_as_read: bool, move_to_processed: bool) -> str:
-        return (
-            f"ONLY_UNREAD={'true' if only_unread else 'false'}\n"
-            f"DAYS_BACK={days_back}\n"
-            f"MARK_AS_READ={'true' if mark_as_read else 'false'}\n"
-            f"MOVE_TO_PROCESSED={'true' if move_to_processed else 'false'}"
-        )
+    page.overlay.append(dp_desde)
+    page.overlay.append(dp_hasta)
 
-    # --- Controls (tus parámetros originales) ---
-    days_input = ft.TextField(
-        label="DAYS_BACK",
-        value="0",
-        width=260,
-        keyboard_type=ft.KeyboardType.NUMBER,
-    )
+    def open_desde(_):
+        expand_window()
+        page.open(dp_desde)
 
-    only_unread_cb = ft.Checkbox(label="ONLY_UNREAD", value=False)
-    mark_as_read_cb = ft.Checkbox(label="MARK_AS_READ", value=False)
-    move_to_processed_cb = ft.Checkbox(label="MOVE_TO_PROCESSED", value=False)
+    def open_hasta(_):
+        expand_window()
+        page.open(dp_hasta)
 
-    start_date_txt = ft.Text(value="-", selectable=True)
-    end_date_txt = ft.Text(value="-", selectable=True)
-
-    env_preview = ft.TextField(
-        label="Preview",
-        value="",
-        multiline=True,
-        min_lines=5,
-        max_lines=6,
-        read_only=True,
-        expand=True,
-    )
+    # ---------------- CONTROLES ----------------
+    only_unread_cb = ft.Checkbox(label="Solo no leídos", value=False)
+    mark_as_read_cb = ft.Checkbox(label="Marcar como leídos", value=False)
+    move_to_processed_cb = ft.Checkbox(label="Mover a procesados", value=False)
 
     status = ft.Text(value="", color=ft.Colors.RED_700)
 
-    # ---- Botones (compatibles con versiones viejas: texto posicional) ----
+    # ---------------- BOTONES ----------------
     load_excel_btn = ft.ElevatedButton(
-        "Load Excel file",
+        "Cargar archivo Excel",
         icon=ft.Icons.UPLOAD_FILE,
         on_click=open_file_picker,
     )
 
     run_btn = ft.ElevatedButton(
-        "Run Pipeline + SAFIX",
+        "Ejecutar AIVO",
         icon=ft.Icons.PLAY_ARROW,
     )
     run_btn.disabled = True
 
-    def set_status(msg: str, is_error: bool = False):
+    def set_status(msg, is_error=False):
         status.value = msg
         status.color = ft.Colors.RED_700 if is_error else ft.Colors.GREEN_700
         page.update()
 
+    # ---------------- REFRESH UI ----------------
     def refresh(_=None):
-        days_back = parse_int(days_input.value, default=0)
-        start_s, end_s = compute_range(days_back)
+        excel_path = (selected_file_txt.value or "").strip()
+        if not excel_path:
+            run_btn.disabled = True
+            status.value = ""
+            page.update()
+            return
 
-        start_date_txt.value = start_s
-        end_date_txt.value = end_s
+        ok, err = validate_excel_file(excel_path)
+        if not ok:
+            run_btn.disabled = True
+            set_status(err, is_error=True)
+        else:
+            run_btn.disabled = False
+            status.value = ""
+            page.update()
 
-        env_preview.value = render_env(
-            only_unread=bool(only_unread_cb.value),
-            days_back=days_back,
-            mark_as_read=bool(mark_as_read_cb.value),
-            move_to_processed=bool(move_to_processed_cb.value),
-        )
-
-        # habilitar RUN si hay Excel y no está vacío
-        run_btn.disabled = not bool((selected_file_txt.value or "").strip())
-
-        page.update()
-
-    def validate_days(_e):
-        _ = parse_int(days_input.value, default=0)
-        refresh()
-
-    days_input.on_change = validate_days
     only_unread_cb.on_change = refresh
     mark_as_read_cb.on_change = refresh
     move_to_processed_cb.on_change = refresh
 
-    # ===============================
-    # EJECUCIÓN PIPELINE + SAFIX
-    # ===============================
-    def apply_env_from_ui():
-        """
-        Setea variables de entorno para que tu workflow actual (run_download/settings)
-        las lea sin tener que refactorizar módulos.
-        """
-        days_back = parse_int(days_input.value, default=0)
-
-        os.environ["ONLY_UNREAD"] = "true" if bool(only_unread_cb.value) else "false"
-        os.environ["DAYS_BACK"] = str(days_back)
-        os.environ["MARK_AS_READ"] = "true" if bool(mark_as_read_cb.value) else "false"
-        os.environ["MOVE_TO_PROCESSED"] = "true" if bool(move_to_processed_cb.value) else "false"
-
+    # ---------------- EJECUCIÓN ----------------
     def run_job(excel_path_str: str):
         try:
-            set_status("Aplicando parámetros y ejecutando Pipeline (download/extract/aggregate)...", is_error=False)
+            set_status("Ejecutando pipeline (descarga / extracción / agregación)...")
 
-            apply_env_from_ui()
+            # ✅ flags calculados desde UI
+            days_back = max(0, (selected_end - selected_start).days)
+            only_unread = bool(only_unread_cb.value)
+            mark_as_read = bool(mark_as_read_cb.value)
+            move_to_processed = bool(move_to_processed_cb.value)
 
-            # Nota: run_pipeline ya ejecuta SAFIX al final con excel_path (según el ajuste que hicimos)
             run_pipeline(
                 output_dir=Path("./output"),
                 lang="spa",
@@ -180,9 +274,15 @@ def main(page: ft.Page):
                 aggregate_by_id=True,
                 excel_path=Path(excel_path_str),
                 run_safix=True,
+
+                # ✅ NUEVO: flags dinámicos
+                only_unread=only_unread,
+                days_back=days_back,
+                mark_as_read=mark_as_read,
+                move_to_processed=move_to_processed,
             )
 
-            set_status("Finalizado OK. Pipeline + SAFIX ejecutados.", is_error=False)
+            set_status("Proceso finalizado correctamente. Pipeline + SAFIX ejecutados.")
 
         except Exception as ex:
             set_status(f"Error: {ex}", is_error=True)
@@ -192,79 +292,76 @@ def main(page: ft.Page):
 
     def on_run_click(_):
         excel_path_str = (selected_file_txt.value or "").strip()
-        if not excel_path_str:
-            set_status("Selecciona un Excel primero.", is_error=True)
-            return
 
-        p = Path(excel_path_str)
-        if not p.exists():
-            set_status("El archivo seleccionado no existe.", is_error=True)
+        ok, err = validate_excel_file(excel_path_str)
+        if not ok:
+            set_status(err, is_error=True)
             return
 
         run_btn.disabled = True
         page.update()
 
-        t = threading.Thread(target=run_job, args=(excel_path_str,), daemon=True)
-        t.start()
+        threading.Thread(
+            target=run_job,
+            args=(excel_path_str,),
+            daemon=True,
+        ).start()
 
     run_btn.on_click = on_run_click
 
-    # --- Layout (tu layout original + botones al final) ---
+    # ---------------- LAYOUT ----------------
     page.add(
         ft.Column(
             spacing=14,
             controls=[
-                ft.Text("Query configuration", size=20, weight=ft.FontWeight.BOLD),
-                ft.Row(
-                    spacing=16,
-                    vertical_alignment=ft.CrossAxisAlignment.START,
-                    controls=[
-                        ft.Container(
-                            content=ft.Column(
-                                spacing=10,
+                ft.Text("Configuración de consulta", size=20, weight=ft.FontWeight.BOLD),
+                ft.Container(
+                    content=ft.Column(
+                        spacing=10,
+                        controls=[
+                            ft.Text("Fechas de consulta", weight=ft.FontWeight.W_600),
+                            ft.Row(
                                 controls=[
-                                    days_input,
-                                    ft.Divider(),
-                                    only_unread_cb,
-                                    mark_as_read_cb,
-                                    move_to_processed_cb,
-                                ],
+                                    ft.TextField(
+                                        label="Fecha inicial",
+                                        value=fmt_date(selected_start),
+                                        read_only=True,
+                                        width=280,
+                                        dense=True,
+                                    ),
+                                    ft.IconButton(
+                                        icon=ft.Icons.CALENDAR_MONTH,
+                                        tooltip="Elegir fecha inicial",
+                                        on_click=open_desde,
+                                    ),
+                                ]
                             ),
-                            padding=16,
-                            border_radius=10,
-                            border=ft.border.all(1, ft.Colors.GREY_300),
-                            width=320,
-                        ),
-                        ft.Container(
-                            content=ft.Column(
-                                spacing=10,
+                            ft.Row(
                                 controls=[
-                                    ft.Text("Date range", weight=ft.FontWeight.W_600),
-                                    ft.Row(
-                                        controls=[
-                                            ft.Text("From:", weight=ft.FontWeight.W_600),
-                                            start_date_txt,
-                                        ]
+                                    ft.TextField(
+                                        label="Fecha final",
+                                        value=fmt_date(selected_end),
+                                        read_only=True,
+                                        width=280,
+                                        dense=True,
                                     ),
-                                    ft.Row(
-                                        controls=[
-                                            ft.Text("To:", weight=ft.FontWeight.W_600),
-                                            end_date_txt,
-                                        ]
+                                    ft.IconButton(
+                                        icon=ft.Icons.CALENDAR_MONTH,
+                                        tooltip="Elegir fecha final",
+                                        on_click=open_hasta,
                                     ),
-                                    ft.Divider(),
-                                    env_preview,
-                                ],
+                                ]
                             ),
-                            padding=16,
-                            border_radius=10,
-                            border=ft.border.all(1, ft.Colors.GREY_300),
-                            expand=True,
-                        ),
-                    ],
+                            ft.Divider(),
+                            only_unread_cb,
+                            mark_as_read_cb,
+                            move_to_processed_cb,
+                        ],
+                    ),
+                    padding=16,
+                    border_radius=10,
+                    border=ft.border.all(1, ft.Colors.GREY_300),
                 ),
-
-                # --- Excel loader + Run at bottom ---
                 ft.Divider(),
                 load_excel_btn,
                 selected_file_txt,

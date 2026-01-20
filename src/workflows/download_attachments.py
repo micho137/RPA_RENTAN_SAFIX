@@ -1,3 +1,4 @@
+# src/workflows/download_attachments.py
 from pathlib import Path
 from src.core.logging_config import setup_logger
 from src.core.com_init import com_initialized
@@ -5,8 +6,20 @@ from src.config import settings
 from src.outlook.client import OutlookClient
 from src.outlook.service import OutlookService
 
-def run_download():
+
+def run_download(
+    *,
+    days_back: int,
+    only_unread: bool,
+    mark_as_read: bool,
+    move_to_processed: bool,
+):
     logger = setup_logger("outlook_bot", settings.log_dir)
+
+    logger.info(
+        "[DL][FLAGS] only_unread=%s days_back=%s mark_as_read=%s move_to_processed=%s",
+        only_unread, days_back, mark_as_read, move_to_processed
+    )
 
     with com_initialized():
         client = OutlookClient()
@@ -18,15 +31,15 @@ def run_download():
         )
 
         move_to = None
-        if settings.move_to_processed:
+        if move_to_processed:
             move_to = service.c.get_folder(store, [settings.processed_folder])
 
         res = service.save_attachments(
             folder=folder,
             out_dir=settings.download_dir,
-            days_back=settings.days_back,
-            only_unread=settings.only_unread,
-            mark_as_read=settings.mark_as_read,
+            days_back=days_back,
+            only_unread=only_unread,
+            mark_as_read=mark_as_read,
             move_to=move_to
         )
 
