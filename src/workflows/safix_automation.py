@@ -151,7 +151,7 @@ def extract_doc_plate_and_total(
 def pick_first_invoice(invoices_by_id: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
     if not invoices_by_id:
         raise ValueError("No hay facturas en el agregado.")
-    first_key = sorted(invoices_by_id.keys())[14]
+    first_key = sorted(invoices_by_id.keys())[10]
     return first_key, invoices_by_id[first_key]
 
 
@@ -400,16 +400,16 @@ class SafixAutomator:
         # XOT
         self.write_text_safe(self.cfg.xot_code)
         pyautogui.press("enter")
-        self.wait(self.cfg.wait_long * 1.3)
+        self.wait(self.cfg.wait_long * 1.5)
 
         # NIT (punto crítico)
         self.write_text_safe(self.cfg.nit)
         pyautogui.press("enter")
-        self.wait(self.cfg.wait_popup * 1.3)
+        self.wait(self.cfg.wait_popup * 1.5)
 
         # Confirmaciones iniciales
         self.press_enter(1, self.cfg.wait_popup)
-        self.press_enter(4, self.cfg.wait_long)
+        self.press_tab(4, self.cfg.wait_long)
 
         # Document ID (no saltar)
         self.write_text_safe(document_id)
