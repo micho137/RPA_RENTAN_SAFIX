@@ -148,13 +148,6 @@ def extract_doc_plate_and_total(
     return doc_id, placa, total_int
 
 
-def pick_first_invoice(invoices_by_id: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
-    if not invoices_by_id:
-        raise ValueError("No hay facturas en el agregado.")
-    first_key = sorted(invoices_by_id.keys())[10]
-    return first_key, invoices_by_id[first_key]
-
-
 # =========================
 # Config SAFIX
 # =========================
@@ -218,7 +211,7 @@ class SafixConfig:
             campo_84=str(settings.safix_campo_84 or ""),
             campo_05=str(settings.safix_campo_05 or ""),
             obl_code=str(getattr(settings, "safix_obl_code", "OBL_EXCLU") or "OBL_EXCLU"),
-            obl2_code=str(getattr(settings,"safix_obl2_code","OBL_ANTCON") or "OBL_ANTCON"),
+            obl2_code=str(getattr(settings, "safix_obl2_code", "OBL_ANTCON") or "OBL_ANTCON"),
             form_ready_wait=settings.safix_form_ready_wait,
             login_wait=settings.safix_login_wait,
             pyauto_pause=settings.safix_pyauto_pause,
@@ -390,11 +383,11 @@ class SafixAutomator:
         placa: str,
         interface: str,
         centro_costos: str,
-        peaje_total: int,  # <-- NUEVO
+        peaje_total: int,
     ):
         _ = centro_costos  # reservado
 
-        self.alt_p_o_g()
+        #self.alt_p_o_g()
         self.wait(self.cfg.wait_long)
 
         # XOT
@@ -421,19 +414,6 @@ class SafixAutomator:
 
         # GOT
         self.escribir_modal(self.cfg.got_code)
-        # Navegación
-        # pyautogui.hotkey("ctrl", "l")
-        # self.wait(self.cfg.wait_default)
-        # self.press_tab(4, self.cfg.wait_default)
-        # pyautogui.press("right")
-        # self.wait(self.cfg.wait_default)
-        #
-        # # GOT (IMPORTANTE: SOLO write_text, NO write_text_safe)
-        # self.write_text(self.cfg.got_code)
-        # self.wait(self.cfg.wait_long)
-        #
-        # #self.press_tab(2, self.cfg.wait_default)
-        # self.press_enter(2, self.cfg.wait_long)
 
         self.press_tab(1, self.cfg.wait_default)
 
@@ -459,10 +439,10 @@ class SafixAutomator:
         # Click en valores
         self.click_image(self.cfg.valores_icon)
 
-        # ========= NUEVO: OBL_EXCLU + total(peaje) =========
+        # ========= OBL_EXCLU + total(peaje) =========
         self.wait(self.cfg.wait_popup)
 
-        # escribir OBL_EXCLU (desde .env)
+        # escribir OBL_EXCLU
         self.write_text_safe(self.cfg.obl_code)
         pyautogui.press("enter")
         self.wait(self.cfg.wait_long)
@@ -487,7 +467,6 @@ class SafixAutomator:
         self.wait(self.cfg.wait_long)
         self.press_tab(4, self.cfg.wait_long)
         self.escribir_modal(self.cfg.got_code)
-        #self.write_text_safe(self.cfg.got_code)
         self.wait(self.cfg.wait_long)
 
         # Cerrar transaccion
@@ -513,11 +492,17 @@ class SafixAutomator:
         self.click_tesoreria()
         self.wait(self.cfg.wait_long * 2)
 
+        self.alt_p_o_g()
+        self.wait(self.cfg.wait_long)
+
 
 # =========================
-# Runners
+# Runners (BATCH)
 # =========================
 def run_safix_from_aggregated_json() -> None:
+    """
+    Procesa TODAS las facturas del agregado (sin ordenar).
+    """
     cfg = SafixConfig.from_settings()
 
     invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
@@ -530,32 +515,56 @@ def run_safix_from_aggregated_json() -> None:
     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
     print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
 
-    first_key, first_invoice = pick_first_invoice(invoices_by_id)
-
-    doc_id, placa, total = extract_doc_plate_and_total(
-        first_invoice,
-        fallback_plate=cfg.fallback_placa,
-        key_fallback_doc_id=first_key,
-    )
-
-    print(f"[SAFIX] DEMO → doc_id='{doc_id}' placa='{placa}' total='{total}' key='{first_key}'")
-
+    # Boot una sola vez
     automator.bootstrap()
     automator.refocus_main()
     automator.wait(1.0)
 
-    automator.procesar_factura(
-        document_id=doc_id,
-        placa=placa,
-        interface="",
-        centro_costos="",
-        peaje_total=total,
-    )
+    ok = 0
+    fail = 0
 
-    print("[SAFIX] DEMO finalizada (una sola factura).")
+    for key, invoice in invoices_by_id.items():
+        try:
+            doc_id, placa, total = extract_doc_plate_and_total(
+                invoice,
+                fallback_plate=cfg.fallback_placa,
+                key_fallback_doc_id=key,
+            )
+
+            print(f"[SAFIX] → doc_id='{doc_id}' placa='{placa}' total='{total}' key='{key}'")
+
+            automator.refocus_main()
+            automator.wait(0.8)
+
+            automator.procesar_factura(
+                document_id=doc_id,
+                placa=placa,
+                interface="",
+                centro_costos="",
+                peaje_total=total,
+            )
+
+            ok += 1
+
+        except Exception as e:
+            fail += 1
+            print(f"[SAFIX][ERROR] key='{key}': {e}")
+            # Recuperación ligera y seguir
+            try:
+                automator.refocus_main()
+                automator.wait(1.0)
+            except Exception:
+                pass
+            continue
+
+    print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail}")
 
 
 def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] = None) -> None:
+    """
+    Procesa TODAS las facturas del agregado (sin ordenar),
+    y por cada una intenta resolver interface/centro_costos por placa desde Excel.
+    """
     cfg = SafixConfig.from_settings()
     if aggregated_json_path is not None:
         cfg.invoices_by_id_path = aggregated_json_path
@@ -573,33 +582,59 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
     print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
 
-    first_key, first_invoice = pick_first_invoice(invoices_by_id)
-
-    doc_id, placa, total = extract_doc_plate_and_total(
-        first_invoice,
-        fallback_plate=cfg.fallback_placa,
-        key_fallback_doc_id=first_key,
-    )
-
-    row = plate_catalog.get(placa, {})
-    interface = row.get("interface", "")
-    centro_costos = row.get("centro_costos", "")
-
-    print(
-        f"[SAFIX] DEMO → doc_id='{doc_id}' placa='{placa}' "
-        f"interface='{interface}' centro_costos='{centro_costos}' total='{total}'"
-    )
-
+    # Boot una sola vez
     automator.bootstrap()
     automator.refocus_main()
     automator.wait(1.0)
 
-    automator.procesar_factura(
-        document_id=doc_id,
-        placa=placa,
-        interface=interface,
-        centro_costos=centro_costos,
-        peaje_total=total,
-    )
+    ok = 0
+    fail = 0
+    missing_plate = 0
 
-    print("[SAFIX] DEMO finalizada (una sola factura) con Excel.")
+    for key, invoice in invoices_by_id.items():
+        try:
+            doc_id, placa, total = extract_doc_plate_and_total(
+                invoice,
+                fallback_plate=cfg.fallback_placa,
+                key_fallback_doc_id=key,
+            )
+
+            row = plate_catalog.get(placa)
+            if not row:
+                missing_plate += 1
+                interface = ""
+                centro_costos = ""
+                print(f"[SAFIX][WARN] placa '{placa}' no está en catálogo. key='{key}'")
+            else:
+                interface = row.get("interface", "")
+                centro_costos = row.get("centro_costos", "")
+
+            print(
+                f"[SAFIX] → doc_id='{doc_id}' placa='{placa}' "
+                f"interface='{interface}' centro_costos='{centro_costos}' total='{total}' key='{key}'"
+            )
+
+            automator.refocus_main()
+            automator.wait(0.8)
+
+            automator.procesar_factura(
+                document_id=doc_id,
+                placa=placa,
+                interface=interface,
+                centro_costos=centro_costos,
+                peaje_total=total,
+            )
+
+            ok += 1
+
+        except Exception as e:
+            fail += 1
+            print(f"[SAFIX][ERROR] key='{key}': {e}")
+            try:
+                automator.refocus_main()
+                automator.wait(1.0)
+            except Exception:
+                pass
+            continue
+
+    print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail} missing_plate={missing_plate}")
