@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import pyautogui
 from openpyxl import load_workbook
-from pywinauto import Desktop, Application
+from pywinauto import Application, Desktop
 
 from src.config import settings
 
@@ -151,7 +152,7 @@ def extract_doc_plate_and_total(
 # =========================
 # Config SAFIX
 # =========================
-@dataclass
+@dataclass(frozen=True)
 class SafixConfig:
     # App/ventana
     jnlp_path: Path
@@ -191,36 +192,37 @@ class SafixConfig:
     def from_settings() -> "SafixConfig":
         title_re = _strip_quotes(getattr(settings, "safix_window_title", ""))
 
-        tesoreria_icon = Path(getattr(settings, "safix_tesoreria_icon"))
-        valores_icon = Path(getattr(settings, "safix_valores_icon"))
-        z_icon = Path(getattr(settings, "safix_z_icon"))
-        engranes_icon = Path(getattr(settings, "safix_engranes_icon"))
+        def _p(name: str) -> Path:
+            v = getattr(settings, name, None)
+            if not v:
+                raise ValueError(f"Falta settings.{name}")
+            return Path(v)
 
         return SafixConfig(
-            jnlp_path=settings.safix_shortcut,
+            jnlp_path=_p("safix_shortcut"),
             main_window_title_re=title_re,
-            tesoreria_icon=tesoreria_icon,
-            valores_icon=valores_icon,
-            z_icon=z_icon,
-            engranes_icon=engranes_icon,
-            user=settings.safix_user,
-            password=settings.safix_pass,
-            nit=str(settings.safix_nit or ""),
-            xot_code=settings.safix_xot_code,
-            got_code=settings.safix_got_code,
-            campo_84=str(settings.safix_campo_84 or ""),
-            campo_05=str(settings.safix_campo_05 or ""),
-            obl_code=str(getattr(settings, "safix_obl_code", "OBL_EXCLU") or "OBL_EXCLU"),
-            obl2_code=str(getattr(settings, "safix_obl2_code", "OBL_ANTCON") or "OBL_ANTCON"),
-            form_ready_wait=settings.safix_form_ready_wait,
-            login_wait=settings.safix_login_wait,
-            pyauto_pause=settings.safix_pyauto_pause,
-            write_interval=settings.safix_write_interval,
-            wait_default=settings.safix_wait_default,
-            wait_long=settings.safix_wait_long,
-            wait_popup=settings.safix_wait_popup,
-            invoices_by_id_path=settings.invoices_by_id_path,
-            fallback_placa=settings.safix_placa,
+            tesoreria_icon=_p("safix_tesoreria_icon"),
+            valores_icon=_p("safix_valores_icon"),
+            z_icon=_p("safix_z_icon"),
+            engranes_icon=_p("safix_engranes_icon"),
+            user=str(getattr(settings, "safix_user", "") or "").strip(),
+            password=str(getattr(settings, "safix_pass", "") or "").strip(),
+            nit=str(getattr(settings, "safix_nit", "") or "").strip(),
+            xot_code=str(getattr(settings, "safix_xot_code", "") or "").strip(),
+            got_code=str(getattr(settings, "safix_got_code", "") or "").strip(),
+            campo_84=str(getattr(settings, "safix_campo_84", "") or "").strip(),
+            campo_05=str(getattr(settings, "safix_campo_05", "") or "").strip(),
+            obl_code=str(getattr(settings, "safix_obl_code", "OBL_EXCLU") or "OBL_EXCLU").strip(),
+            obl2_code=str(getattr(settings, "safix_obl2_code", "OBL_ANTCON") or "OBL_ANTCON").strip(),
+            form_ready_wait=float(getattr(settings, "safix_form_ready_wait", 0) or 0),
+            login_wait=float(getattr(settings, "safix_login_wait", 0) or 0),
+            pyauto_pause=float(getattr(settings, "safix_pyauto_pause", 0.0) or 0.0),
+            write_interval=float(getattr(settings, "safix_write_interval", 0.05) or 0.05),
+            wait_default=float(getattr(settings, "safix_wait_default", 0.7) or 0.7),
+            wait_long=float(getattr(settings, "safix_wait_long", 1.2) or 1.2),
+            wait_popup=float(getattr(settings, "safix_wait_popup", 1.6) or 1.6),
+            invoices_by_id_path=_p("invoices_by_id_path"),
+            fallback_placa=str(getattr(settings, "safix_placa", "") or "").strip(),
         )
 
 
@@ -236,9 +238,15 @@ class SafixAutomator:
         pyautogui.PAUSE = self.cfg.pyauto_pause
 
     # ---------- Ventanas ----------
-    def _wait_for_window_win32(self, title_re: str, timeout: float = 60.0, interval: float = 1.0):
+    def _wait_for_window_win32(
+        self,
+        title_re: str,
+        timeout: float = 60.0,
+        interval: float = 1.0,
+    ):
         start = time.time()
         desktop = Desktop(backend="win32")
+
         while True:
             try:
                 win = desktop.window(title_re=title_re)
@@ -252,11 +260,10 @@ class SafixAutomator:
             time.sleep(interval)
 
     def launch_and_focus_main(self):
-        if not self.cfg.jnlp_path or not self.cfg.jnlp_path.exists():
+        if not self.cfg.jnlp_path.exists():
             raise FileNotFoundError(f"No se encontró el JNLP: {self.cfg.jnlp_path}")
 
-        import os as _os
-        _os.startfile(str(self.cfg.jnlp_path))
+        os.startfile(str(self.cfg.jnlp_path))
 
         main_win = self._wait_for_window_win32(self.cfg.main_window_title_re, timeout=90.0)
         self._main_handle = int(main_win.handle)
@@ -294,7 +301,7 @@ class SafixAutomator:
     def write_text(self, text: str):
         pyautogui.write(str(text), interval=self.cfg.write_interval)
 
-    def write_text_safe(self, text: str):
+    def write_text_safe(self, text: str, slow_min_interval: float = 0.10):
         """
         Para campos sensibles (login, NIT, document_id, interface, placa, valores):
         selecciona todo, borra, escribe más lento y deja margen.
@@ -303,20 +310,22 @@ class SafixAutomator:
         self.wait(0.2)
         pyautogui.press("backspace")
         self.wait(0.2)
-        pyautogui.write(str(text), interval=max(self.cfg.write_interval, 0.10))
+        pyautogui.write(str(text), interval=max(self.cfg.write_interval, slow_min_interval))
         self.wait(0.6)
 
     def press_enter(self, n: int = 1, wait_each: Optional[float] = None):
         for _ in range(max(1, n)):
             pyautogui.press("enter")
-            self.wait(wait_each)
+            if wait_each is not None:
+                self.wait(wait_each)
 
     def press_tab(self, n: int = 1, wait_each: Optional[float] = None):
         for _ in range(max(1, n)):
             pyautogui.press("tab")
-            self.wait(wait_each)
+            if wait_each is not None:
+                self.wait(wait_each)
 
-    # ---------- Login (robusto) ----------
+    # ---------- Login ----------
     def do_login(self):
         self.wait(1.2)
         self.write_text_safe(self.cfg.user)
@@ -347,7 +356,7 @@ class SafixAutomator:
     def click_tesoreria(self):
         return self.click_image(self.cfg.tesoreria_icon)
 
-    # ---------- ALT+P,O,G ----------
+    # ---------- ALT+P,O,G (solo 1 vez en bootstrap) ----------
     def alt_p_o_g(self):
         pyautogui.keyDown("alt")
         time.sleep(0.1)
@@ -362,18 +371,17 @@ class SafixAutomator:
 
     # ---------- Escribir en modal CTRL + L ----------
     def escribir_modal(self, text_str: str):
-        # Navegación
         pyautogui.hotkey("ctrl", "l")
         self.wait(self.cfg.wait_default)
+
         self.press_tab(4, self.cfg.wait_default)
         pyautogui.press("right")
         self.wait(self.cfg.wait_default)
 
-        # GOT (IMPORTANTE: SOLO write_text, NO write_text_safe)
+        # GOT: write normal (no "safe")
         self.write_text(text_str)
         self.wait(self.cfg.wait_long)
 
-        # Confirmación
         self.press_enter(2, self.cfg.wait_long)
 
     # ---------- Proceso por factura ----------
@@ -387,7 +395,7 @@ class SafixAutomator:
     ):
         _ = centro_costos  # reservado
 
-        #self.alt_p_o_g()
+        # Si el engrane te devuelve al campo XOT, solo espera a que esté listo
         self.wait(self.cfg.wait_long)
 
         # XOT
@@ -395,7 +403,7 @@ class SafixAutomator:
         pyautogui.press("enter")
         self.wait(self.cfg.wait_long * 1.5)
 
-        # NIT (punto crítico)
+        # NIT
         self.write_text_safe(self.cfg.nit)
         pyautogui.press("enter")
         self.wait(self.cfg.wait_popup * 1.5)
@@ -404,7 +412,7 @@ class SafixAutomator:
         self.press_enter(1, self.cfg.wait_popup)
         self.press_tab(4, self.cfg.wait_long)
 
-        # Document ID (no saltar)
+        # Document ID
         self.write_text_safe(document_id)
         pyautogui.press("enter")
         self.wait(self.cfg.wait_long)
@@ -442,38 +450,41 @@ class SafixAutomator:
         # ========= OBL_EXCLU + total(peaje) =========
         self.wait(self.cfg.wait_popup)
 
-        # escribir OBL_EXCLU
         self.write_text_safe(self.cfg.obl_code)
         pyautogui.press("enter")
         self.wait(self.cfg.wait_long)
 
-        # escribir total
         self.write_text_safe(str(peaje_total))
         self.press_enter(2, self.cfg.wait_long)
         self.wait(self.cfg.wait_long)
 
-        # escribir OBL_ANTCON
         self.write_text_safe(self.cfg.obl2_code)
         pyautogui.press("enter")
         self.wait(self.cfg.wait_long)
 
-        # escribir total
         self.write_text_safe(str(peaje_total))
         self.press_enter(2, self.cfg.wait_long)
         self.wait(self.cfg.wait_long)
 
-        # hacer clic en imagen Z
+        # clic Z
         self.click_image(self.cfg.z_icon)
         self.wait(self.cfg.wait_long)
+
         self.press_tab(4, self.cfg.wait_long)
         self.escribir_modal(self.cfg.got_code)
         self.wait(self.cfg.wait_long)
 
-        # Cerrar transaccion
+        # Cerrar transacción
         self.click_image(self.cfg.engranes_icon)
         self.wait(self.cfg.wait_long)
         self.press_enter(1, self.cfg.wait_long)
         self.wait(self.cfg.wait_default)
+
+        # Limpieza suave para asegurar que quedas listo en XOT
+        pyautogui.press("esc")
+        self.wait(0.3)
+        self.refocus_main()
+        self.wait(0.4)
 
     # ---------- Bootstrap ----------
     def bootstrap(self):
@@ -492,6 +503,7 @@ class SafixAutomator:
         self.click_tesoreria()
         self.wait(self.cfg.wait_long * 2)
 
+        # Entrar una sola vez al flujo que deja el cursor en XOT
         self.alt_p_o_g()
         self.wait(self.cfg.wait_long)
 
@@ -500,9 +512,7 @@ class SafixAutomator:
 # Runners (BATCH)
 # =========================
 def run_safix_from_aggregated_json() -> None:
-    """
-    Procesa TODAS las facturas del agregado (sin ordenar).
-    """
+    """Procesa TODAS las facturas del agregado (sin ordenar)."""
     cfg = SafixConfig.from_settings()
 
     invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
@@ -515,7 +525,6 @@ def run_safix_from_aggregated_json() -> None:
     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
     print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
 
-    # Boot una sola vez
     automator.bootstrap()
     automator.refocus_main()
     automator.wait(1.0)
@@ -534,7 +543,7 @@ def run_safix_from_aggregated_json() -> None:
             print(f"[SAFIX] → doc_id='{doc_id}' placa='{placa}' total='{total}' key='{key}'")
 
             automator.refocus_main()
-            automator.wait(0.8)
+            automator.wait(0.6)
 
             automator.procesar_factura(
                 document_id=doc_id,
@@ -543,13 +552,11 @@ def run_safix_from_aggregated_json() -> None:
                 centro_costos="",
                 peaje_total=total,
             )
-
             ok += 1
 
         except Exception as e:
             fail += 1
             print(f"[SAFIX][ERROR] key='{key}': {e}")
-            # Recuperación ligera y seguir
             try:
                 automator.refocus_main()
                 automator.wait(1.0)
@@ -564,10 +571,14 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
     """
     Procesa TODAS las facturas del agregado (sin ordenar),
     y por cada una intenta resolver interface/centro_costos por placa desde Excel.
+
+    aggregated_json_path (override):
+      Si se pasa, reemplaza cfg.invoices_by_id_path SOLO para esta ejecución
+      sin modificar settings/.env (config inmutable + replace()).
     """
     cfg = SafixConfig.from_settings()
     if aggregated_json_path is not None:
-        cfg.invoices_by_id_path = aggregated_json_path
+        cfg = replace(cfg, invoices_by_id_path=aggregated_json_path)
 
     plate_catalog = load_plate_catalog_from_excel(excel_path)
     print(f"[SAFIX] catálogo placas cargado: {len(plate_catalog)} desde {excel_path.resolve()}")
@@ -582,7 +593,6 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
     print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
 
-    # Boot una sola vez
     automator.bootstrap()
     automator.refocus_main()
     automator.wait(1.0)
@@ -615,7 +625,7 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
             )
 
             automator.refocus_main()
-            automator.wait(0.8)
+            automator.wait(0.6)
 
             automator.procesar_factura(
                 document_id=doc_id,
@@ -624,7 +634,6 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
                 centro_costos=centro_costos,
                 peaje_total=total,
             )
-
             ok += 1
 
         except Exception as e:
