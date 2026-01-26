@@ -612,7 +612,7 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
     """
     overlay = StatusOverlay()
     overlay.start()
-    overlay.update()
+    overlay.update(etapa="AIVO: RENTAN", extra="Abriendo SAFIX y preparando sesión…")
 
     cfg = SafixConfig.from_settings()
     if aggregated_json_path is not None:
@@ -665,7 +665,7 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
             overlay.update(
                 document_id=doc_id,
                 placa=placa,
-                etapa="SAFIX: Procesando factura",
+                etapa="AIVO: Procesando factura",
                 extra=f"interface={interface or '-'} | cc={centro_costos or '-'} | total={total}",
             )
 

@@ -1,4 +1,3 @@
-# src/ui/overlay_status.py
 from __future__ import annotations
 
 import threading
@@ -11,12 +10,13 @@ from typing import Optional
 
 @dataclass
 class StatusPayload:
+    etapa: str = ""
     document_id: str = ""
     placa: str = ""
     current: int = 0
     total: int = 0
     elapsed_global_s: float = 0.0
-    footer: str = ""  # opcional por si quieres mensajes cortos
+    extra: str = ""
 
 
 def _fmt_hhmmss(seconds: float) -> str:
@@ -29,11 +29,12 @@ def _fmt_hhmmss(seconds: float) -> str:
 
 class StatusOverlay:
     """
-    Overlay always-on-top minimal:
+    Overlay always-on-top:
+    - etapa (línea 1)
     - document_id
     - placa
-    - progreso i/N
-    - tiempo global desde que aparece el overlay
+    - progreso i/N + tiempo global desde start()
+    - extra (línea final opcional)
     """
 
     def __init__(
@@ -43,8 +44,8 @@ class StatusOverlay:
         alpha: float = 0.92,
         x: int = 20,
         y: int = 20,
-        width: int = 360,
-        height: int = 130,
+        width: int = 340,
+        height: int = 155,
         poll_ms: int = 120,
     ) -> None:
         self._title = title
@@ -60,18 +61,18 @@ class StatusOverlay:
         self._thread: Optional[threading.Thread] = None
         self._started = threading.Event()
 
+        self._lbl_stage: Optional[tk.Label] = None
         self._lbl_doc: Optional[tk.Label] = None
         self._lbl_plate: Optional[tk.Label] = None
         self._lbl_meta: Optional[tk.Label] = None
-        self._lbl_footer: Optional[tk.Label] = None
+        self._lbl_extra: Optional[tk.Label] = None
 
-        self._t0 = time.perf_counter()  # tiempo global inicia al crear el objeto
+        self._t0 = 0.0  # se define al start()
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
-        # tiempo global inicia al mostrar overlay
-        self._t0 = time.perf_counter()
+        self._t0 = time.perf_counter()  # tiempo global empieza cuando aparece el overlay
         self._thread = threading.Thread(target=self._run_tk, name="StatusOverlayThread", daemon=True)
         self._thread.start()
         self._started.wait(timeout=2.0)
@@ -81,21 +82,24 @@ class StatusOverlay:
 
     def update(
         self,
+        *,
         document_id: str = "",
         placa: str = "",
         current: int = 0,
         total: int = 0,
-        footer: str = "",
+        etapa: str = "",
+        extra: str = "",
     ) -> None:
-        elapsed = time.perf_counter() - self._t0
+        elapsed = time.perf_counter() - self._t0 if self._t0 else 0.0
         self._q.put(
             StatusPayload(
+                etapa=etapa,
                 document_id=document_id,
                 placa=placa,
                 current=current,
                 total=total,
                 elapsed_global_s=elapsed,
-                footer=footer,
+                extra=extra,
             )
         )
 
@@ -115,21 +119,24 @@ class StatusOverlay:
         frame = tk.Frame(root, bg="#111111", highlightthickness=2, highlightbackground="#444444")
         frame.pack(fill="both", expand=True)
 
-        font_line = ("Segoe UI", 12, "bold")
-        font_mid = ("Segoe UI", 12)
+        font_stage = ("Segoe UI", 14, "bold")
+        font_line = ("Segoe UI", 12)
         font_small = ("Segoe UI", 10)
 
-        self._lbl_doc = tk.Label(frame, text="document_id: -", fg="white", bg="#111111", font=font_line, anchor="w")
-        self._lbl_doc.pack(fill="x", padx=14, pady=(10, 2))
+        self._lbl_stage = tk.Label(frame, text="Procesando…", fg="white", bg="#111111", font=font_stage, anchor="w")
+        self._lbl_stage.pack(fill="x", padx=14, pady=(10, 6))
 
-        self._lbl_plate = tk.Label(frame, text="placa: -", fg="#DADADA", bg="#111111", font=font_mid, anchor="w")
+        self._lbl_doc = tk.Label(frame, text="document_id: -", fg="#DADADA", bg="#111111", font=font_line, anchor="w")
+        self._lbl_doc.pack(fill="x", padx=14, pady=(0, 2))
+
+        self._lbl_plate = tk.Label(frame, text="placa: -", fg="#DADADA", bg="#111111", font=font_line, anchor="w")
         self._lbl_plate.pack(fill="x", padx=14, pady=(0, 2))
 
         self._lbl_meta = tk.Label(frame, text="progreso: - | tiempo: 00:00:00", fg="#BDBDBD", bg="#111111", font=font_small, anchor="w")
         self._lbl_meta.pack(fill="x", padx=14, pady=(6, 0))
 
-        self._lbl_footer = tk.Label(frame, text="", fg="#AAAAAA", bg="#111111", font=font_small, anchor="w")
-        self._lbl_footer.pack(fill="x", padx=14, pady=(4, 10))
+        self._lbl_extra = tk.Label(frame, text="", fg="#AAAAAA", bg="#111111", font=font_small, anchor="w")
+        self._lbl_extra.pack(fill="x", padx=14, pady=(4, 10))
 
         # mover overlay con drag
         def _start_move(event):
@@ -164,11 +171,17 @@ class StatusOverlay:
         root.mainloop()
 
     def _apply(self, p: StatusPayload) -> None:
-        self._lbl_doc.config(text=f"ID Documento: {p.document_id or '-'}")
-        self._lbl_plate.config(text=f"Placa: {p.placa or '-'}")
+        if self._lbl_stage:
+            self._lbl_stage.config(text=p.etapa or "Procesando…")
+        if self._lbl_doc:
+            self._lbl_doc.config(text=f"document_id: {p.document_id or '-'}")
+        if self._lbl_plate:
+            self._lbl_plate.config(text=f"placa: {p.placa or '-'}")
 
         prog = f"{p.current}/{p.total}" if p.total else "-"
         t = _fmt_hhmmss(p.elapsed_global_s)
-        self._lbl_meta.config(text=f"Progreso: {prog} | tiempo: {t}")
+        if self._lbl_meta:
+            self._lbl_meta.config(text=f"progreso: {prog} | tiempo: {t}")
 
-        self._lbl_footer.config(text=p.footer or "")
+        if self._lbl_extra:
+            self._lbl_extra.config(text=p.extra or "")
