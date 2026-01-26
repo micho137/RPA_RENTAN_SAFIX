@@ -339,6 +339,30 @@ def main(page: ft.Page):
         finally:
             run_btn.disabled = False
             page.update()
+            try:
+                if hasattr(page, "window") and page.window is not None:
+                    page.window.minimized = False
+                    page.window.focus()
+                    page.update()
+            except Exception:
+                pass
+
+    def minimize_window_best_effort():
+        # API nueva
+        try:
+            if hasattr(page, "window") and page.window is not None:
+                page.window.minimized = True
+                page.update()
+                return
+        except Exception:
+            pass
+
+        # API vieja
+        try:
+            page.window_minimized = True
+            page.update()
+        except Exception:
+            pass
 
     def on_run_click(_):
         excel_path_str = (selected_file_txt.value or "").strip()
@@ -350,6 +374,8 @@ def main(page: ft.Page):
 
         run_btn.disabled = True
         page.update()
+
+        minimize_window_best_effort()
 
         threading.Thread(
             target=run_job,

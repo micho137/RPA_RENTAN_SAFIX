@@ -522,11 +522,12 @@ def run_safix_from_aggregated_json() -> None:
         print("[SAFIX] No hay facturas. No se ejecuta.")
         return
 
-    total_invoices = len(invoices_by_id)
+    items = list(invoices_by_id.items())
+    total_invoices = len(items)
 
-    overlay = StatusOverlay()
+    overlay = StatusOverlay(width=340, height=165)
     overlay.start()
-    overlay.update(document_id="", placa="", current=0, total=total_invoices, footer="Iniciando SAFIX…")
+    overlay.update(etapa="AIVO: RENTAN", current=0, total=total_invoices, extra="Iniciando SAFIX…")
 
     automator = SafixAutomator(cfg)
 
@@ -540,7 +541,7 @@ def run_safix_from_aggregated_json() -> None:
     ok = 0
     fail = 0
 
-    for idx, (key, invoice) in enumerate(invoices_by_id.items(), start=1):
+    for idx, (key, invoice) in enumerate(items, start=1):
         doc_id = ""
         placa = ""
         try:
@@ -550,13 +551,13 @@ def run_safix_from_aggregated_json() -> None:
                 key_fallback_doc_id=key,
             )
 
-            # >>> Actualiza overlay al inicio de cada factura
             overlay.update(
+                etapa="AIVO: Procesando factura",
                 document_id=doc_id,
                 placa=placa,
                 current=idx,
                 total=total_invoices,
-                footer="",
+                extra="",
             )
 
             automator.refocus_main()
@@ -575,11 +576,12 @@ def run_safix_from_aggregated_json() -> None:
         except Exception as e:
             fail += 1
             overlay.update(
+                etapa="AIVO: ERROR",
                 document_id=doc_id,
                 placa=placa,
                 current=idx,
                 total=total_invoices,
-                footer=f"ERROR: {e}",
+                extra=str(e),
             )
             print(f"[SAFIX][ERROR] key='{key}': {e}")
             try:
@@ -590,14 +592,13 @@ def run_safix_from_aggregated_json() -> None:
             continue
 
     overlay.update(
-        document_id="",
-        placa="",
+        etapa="AIVO: Finalizado",
         current=total_invoices,
         total=total_invoices,
-        footer=f"Finalizado. OK={ok} FAIL={fail}",
+        extra=f"OK={ok} FAIL={fail}",
     )
     print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail}")
-    # overlay.stop()  # si quieres cerrarlo automáticamente al terminar
+
 
 
 
@@ -605,15 +606,7 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
     """
     Procesa TODAS las facturas del agregado (sin ordenar),
     y por cada una intenta resolver interface/centro_costos por placa desde Excel.
-
-    aggregated_json_path (override):
-      Si se pasa, reemplaza cfg.invoices_by_id_path SOLO para esta ejecución
-      sin modificar settings/.env (config inmutable + replace()).
     """
-    overlay = StatusOverlay()
-    overlay.start()
-    overlay.update(etapa="AIVO: RENTAN", extra="Abriendo SAFIX y preparando sesión…")
-
     cfg = SafixConfig.from_settings()
     if aggregated_json_path is not None:
         cfg = replace(cfg, invoices_by_id_path=aggregated_json_path)
@@ -626,10 +619,17 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
         print("[SAFIX] No hay facturas. No se ejecuta.")
         return
 
+    items = list(invoices_by_id.items())
+    total_invoices = len(items)
+
+    overlay = StatusOverlay(width=340, height=165)
+    overlay.start()
+    overlay.update(etapa="AIVO: RENTAN", current=0, total=total_invoices, extra="Abriendo SAFIX…")
+
     automator = SafixAutomator(cfg)
 
     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
-    print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
+    print(f"[SAFIX] total facturas: {total_invoices}")
 
     automator.bootstrap()
     automator.refocus_main()
@@ -639,7 +639,9 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
     fail = 0
     missing_plate = 0
 
-    for key, invoice in invoices_by_id.items():
+    for idx, (key, invoice) in enumerate(items, start=1):
+        doc_id = ""
+        placa = ""
         try:
             doc_id, placa, total = extract_doc_plate_and_total(
                 invoice,
@@ -652,20 +654,16 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
                 missing_plate += 1
                 interface = ""
                 centro_costos = ""
-                print(f"[SAFIX][WARN] placa '{placa}' no está en catálogo. key='{key}'")
             else:
                 interface = row.get("interface", "")
                 centro_costos = row.get("centro_costos", "")
 
-            print(
-                f"[SAFIX] → doc_id='{doc_id}' placa='{placa}' "
-                f"interface='{interface}' centro_costos='{centro_costos}' total='{total}' key='{key}'"
-            )
-
             overlay.update(
+                etapa="AIVO: Procesando factura",
                 document_id=doc_id,
                 placa=placa,
-                etapa="AIVO: Procesando factura",
+                current=idx,
+                total=total_invoices,
                 extra=f"interface={interface or '-'} | cc={centro_costos or '-'} | total={total}",
             )
 
@@ -683,6 +681,14 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
 
         except Exception as e:
             fail += 1
+            overlay.update(
+                etapa="AIVO: ERROR",
+                document_id=doc_id,
+                placa=placa,
+                current=idx,
+                total=total_invoices,
+                extra=str(e),
+            )
             print(f"[SAFIX][ERROR] key='{key}': {e}")
             try:
                 automator.refocus_main()
@@ -691,4 +697,11 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
                 pass
             continue
 
+    overlay.update(
+        etapa="AIVO: Finalizado",
+        current=total_invoices,
+        total=total_invoices,
+        extra=f"OK={ok} FAIL={fail} missing_plate={missing_plate}",
+    )
     print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail} missing_plate={missing_plate}")
+
