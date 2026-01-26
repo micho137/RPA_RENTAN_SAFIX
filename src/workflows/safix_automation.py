@@ -602,11 +602,29 @@ def run_safix_from_aggregated_json() -> None:
 
 
 
-def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] = None) -> None:
+def run_safix_with_excel(
+    excel_path: Path,
+    aggregated_json_path: Optional[Path] = None,
+    tracker=None,
+) -> None:
     """
     Procesa TODAS las facturas del agregado (sin ordenar),
     y por cada una intenta resolver interface/centro_costos por placa desde Excel.
+
+    aggregated_json_path (override):
+      Si se pasa, reemplaza cfg.invoices_by_id_path SOLO para esta ejecución
+      sin modificar settings/.env (config inmutable + replace()).
+
+    tracker (opcional):
+      Instancia de RunTracker para registrar procesadas.xlsx
     """
+    from datetime import datetime
+
+    # Overlay (si lo quieres en esta función)
+    overlay = StatusOverlay(width=340, height=165)
+    overlay.start()
+    overlay.update(etapa="AIVO: RENTAN", extra="Abriendo SAFIX y preparando sesión…")
+
     cfg = SafixConfig.from_settings()
     if aggregated_json_path is not None:
         cfg = replace(cfg, invoices_by_id_path=aggregated_json_path)
@@ -616,15 +634,22 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
 
     invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
     if not invoices_by_id:
+        overlay.update(etapa="AIVO: RENTAN", extra="No hay facturas. No se ejecuta.")
         print("[SAFIX] No hay facturas. No se ejecuta.")
         return
 
     items = list(invoices_by_id.items())
     total_invoices = len(items)
 
-    overlay = StatusOverlay(width=340, height=165)
-    overlay.start()
-    overlay.update(etapa="AIVO: RENTAN", current=0, total=total_invoices, extra="Abriendo SAFIX…")
+    # Inicia contador global desde que aparece overlay:
+    overlay.update(
+        etapa="AIVO: RENTAN",
+        document_id="",
+        placa="",
+        current=0,
+        total=total_invoices,
+        extra=f"Facturas detectadas: {total_invoices}",
+    )
 
     automator = SafixAutomator(cfg)
 
@@ -642,6 +667,12 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
     for idx, (key, invoice) in enumerate(items, start=1):
         doc_id = ""
         placa = ""
+        total = None
+        interface = ""
+        centro_costos = ""
+
+        t_start = datetime.now().isoformat(timespec="seconds")
+
         try:
             doc_id, placa, total = extract_doc_plate_and_total(
                 invoice,
@@ -654,17 +685,20 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
                 missing_plate += 1
                 interface = ""
                 centro_costos = ""
+                extra = f"placa no está en catálogo | total={total}"
             else:
                 interface = row.get("interface", "")
                 centro_costos = row.get("centro_costos", "")
+                extra = f"interface={interface or '-'} | cc={centro_costos or '-'} | total={total}"
 
+            # ✅ Overlay: mostrar lo que se está procesando en el momento
             overlay.update(
                 etapa="AIVO: Procesando factura",
                 document_id=doc_id,
                 placa=placa,
                 current=idx,
                 total=total_invoices,
-                extra=f"interface={interface or '-'} | cc={centro_costos or '-'} | total={total}",
+                extra=extra,
             )
 
             automator.refocus_main()
@@ -675,20 +709,50 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
                 placa=placa,
                 interface=interface,
                 centro_costos=centro_costos,
-                peaje_total=total,
+                peaje_total=int(total),
             )
+
+            t_end = datetime.now().isoformat(timespec="seconds")
+            if tracker is not None:
+                tracker.add_processed(
+                    timestamp_start=t_start,
+                    timestamp_end=t_end,
+                    document_id=doc_id,
+                    placa=placa,
+                    total=int(total) if total is not None else None,
+                    key=str(key),
+                    status="OK",
+                    error="",
+                )
+
             ok += 1
 
         except Exception as e:
             fail += 1
+            t_end = datetime.now().isoformat(timespec="seconds")
+
+            # ✅ Overlay: error contextual
             overlay.update(
                 etapa="AIVO: ERROR",
                 document_id=doc_id,
                 placa=placa,
                 current=idx,
                 total=total_invoices,
-                extra=str(e),
+                extra=f"{type(e).__name__}: {e}",
             )
+
+            if tracker is not None:
+                tracker.add_processed(
+                    timestamp_start=t_start,
+                    timestamp_end=t_end,
+                    document_id=doc_id,
+                    placa=placa,
+                    total=int(total) if isinstance(total, (int, float)) else None,
+                    key=str(key),
+                    status="FAIL",
+                    error=str(e),
+                )
+
             print(f"[SAFIX][ERROR] key='{key}': {e}")
             try:
                 automator.refocus_main()
@@ -699,9 +763,14 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
 
     overlay.update(
         etapa="AIVO: Finalizado",
+        document_id="",
+        placa="",
         current=total_invoices,
         total=total_invoices,
         extra=f"OK={ok} FAIL={fail} missing_plate={missing_plate}",
     )
+
     print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail} missing_plate={missing_plate}")
+    # overlay.stop()  # si quieres cerrarlo automáticamente
+
 
