@@ -43,8 +43,8 @@ class StatusOverlay:
         alpha: float = 0.92,
         x: int = 20,
         y: int = 20,
-        width: int = 560,
-        height: int = 120,
+        width: int = 360,
+        height: int = 130,
         poll_ms: int = 120,
     ) -> None:
         self._title = title

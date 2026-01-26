@@ -612,7 +612,7 @@ def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] 
     """
     overlay = StatusOverlay()
     overlay.start()
-    overlay.update(etapa="SAFIX: Bootstrap", extra="Abriendo SAFIX y preparando sesión…")
+    overlay.update()
 
     cfg = SafixConfig.from_settings()
     if aggregated_json_path is not None:
