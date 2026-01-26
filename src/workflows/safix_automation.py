@@ -522,14 +522,16 @@ def run_safix_from_aggregated_json() -> None:
         print("[SAFIX] No hay facturas. No se ejecuta.")
         return
 
+    total_invoices = len(invoices_by_id)
+
     overlay = StatusOverlay()
     overlay.start()
-    overlay.update(etapa="SAFIX: Bootstrap", extra="Abriendo SAFIX y preparando sesión…")
+    overlay.update(document_id="", placa="", current=0, total=total_invoices, footer="Iniciando SAFIX…")
 
     automator = SafixAutomator(cfg)
 
     print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
-    print(f"[SAFIX] total facturas: {len(invoices_by_id)}")
+    print(f"[SAFIX] total facturas: {total_invoices}")
 
     automator.bootstrap()
     automator.refocus_main()
@@ -538,7 +540,9 @@ def run_safix_from_aggregated_json() -> None:
     ok = 0
     fail = 0
 
-    for key, invoice in invoices_by_id.items():
+    for idx, (key, invoice) in enumerate(invoices_by_id.items(), start=1):
+        doc_id = ""
+        placa = ""
         try:
             doc_id, placa, total = extract_doc_plate_and_total(
                 invoice,
@@ -546,21 +550,17 @@ def run_safix_from_aggregated_json() -> None:
                 key_fallback_doc_id=key,
             )
 
-            # >>> Overlay: lo que se está procesando ahora
+            # >>> Actualiza overlay al inicio de cada factura
             overlay.update(
                 document_id=doc_id,
                 placa=placa,
-                etapa="SAFIX: Procesando factura",
-                extra=f"key={key} | total={total}",
+                current=idx,
+                total=total_invoices,
+                footer="",
             )
-
-            print(f"[SAFIX] → doc_id='{doc_id}' placa='{placa}' total='{total}' key='{key}'")
 
             automator.refocus_main()
             automator.wait(0.6)
-
-            # (opcional) etapa previa
-            overlay.update(document_id=doc_id, placa=placa, etapa="SAFIX: Digitando", extra="Ingresando datos…")
 
             automator.procesar_factura(
                 document_id=doc_id,
@@ -571,12 +571,16 @@ def run_safix_from_aggregated_json() -> None:
             )
 
             ok += 1
-            overlay.update(document_id=doc_id, placa=placa, etapa="SAFIX: OK", extra="Factura registrada.")
 
         except Exception as e:
             fail += 1
-            overlay.update(document_id=doc_id if "doc_id" in locals() else "", placa=placa if "placa" in locals() else "",
-                          etapa="SAFIX: ERROR", extra=str(e))
+            overlay.update(
+                document_id=doc_id,
+                placa=placa,
+                current=idx,
+                total=total_invoices,
+                footer=f"ERROR: {e}",
+            )
             print(f"[SAFIX][ERROR] key='{key}': {e}")
             try:
                 automator.refocus_main()
@@ -585,9 +589,16 @@ def run_safix_from_aggregated_json() -> None:
                 pass
             continue
 
-    overlay.update(etapa="SAFIX: Finalizado", extra=f"OK={ok} FAIL={fail}")
-    # overlay.stop()  # si quieres que se cierre automáticamente al terminar
+    overlay.update(
+        document_id="",
+        placa="",
+        current=total_invoices,
+        total=total_invoices,
+        footer=f"Finalizado. OK={ok} FAIL={fail}",
+    )
     print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail}")
+    # overlay.stop()  # si quieres cerrarlo automáticamente al terminar
+
 
 
 def run_safix_with_excel(excel_path: Path, aggregated_json_path: Optional[Path] = None) -> None:
