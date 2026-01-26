@@ -6,8 +6,10 @@ from src.core.logging_config import setup_logger
 from src.workflows.download_attachments import run_download
 from src.processing.zip_invoice_extractor import ZipInvoiceExtractor
 from src.processing.aggregate_json import build_invoices_by_id
-
 from src.workflows.safix_automation import run_safix_with_excel
+
+from src.core.run_tracking import RunTracker
+from src.core.cleanup import cleanup_output_dir_keep_pdf_xml
 
 
 OUTPUT_DIR = Path("./output")
@@ -22,7 +24,7 @@ def run_pipeline(
     excel_path: Path | None = None,
     run_safix: bool = True,
 
-    # ✅ NUEVO: flags dinámicos (UI)
+    # ✅ flags dinámicos (UI)
     only_unread: bool = False,
     days_back: int = 0,
     mark_as_read: bool = False,
@@ -37,6 +39,8 @@ def run_pipeline(
     - Indexa resultados
     - Genera SOLO un JSON agregado por document_id: all_invoices_by_id.json
     - (Opcional) Ejecuta SAFIX al finalizar usando Excel para INTERFACE/CENTRO DE COSTOS
+    - (Nuevo) Genera logs Excel: descargados.xlsx y procesadas.xlsx
+    - (Nuevo) Cleanup final: elimina todo excepto PDF y XML (y conserva los logs Excel)
     """
 
     output_dir = Path(output_dir).resolve()
@@ -53,6 +57,9 @@ def run_pipeline(
 
     logger = setup_logger("invoice_pipeline", settings.log_dir)
 
+    # ✅ Tracker para Excels
+    tracker = RunTracker(output_dir=output_dir)
+
     # ---------- 1) Descargar adjuntos ----------
     logger.info("Downloading attachments from Outlook...")
     logger.info(
@@ -67,6 +74,24 @@ def run_pipeline(
         move_to_processed=move_to_processed,
     )
     logger.info("Download done: processed=%s | saved=%s", dl.processed, dl.attachments_saved)
+
+    # ✅ Log descargados (ZIPs)
+    # Asumimos que settings.download_dir es el dir donde se guardan los adjuntos.
+    # Y que dl.attachments_saved es un contador. Para listar exactamente qué se guardó,
+    # hacemos un snapshot: los ZIP en settings.download_dir.
+    try:
+        download_dir = Path(settings.download_dir).resolve()
+        if download_dir.exists():
+            for p in sorted(download_dir.glob("*.zip")):
+                tracker.add_download(
+                    original_name=p.name,
+                    saved_path=p,
+                    size_bytes=p.stat().st_size if p.exists() else None,
+                    status="OK",
+                    error="",
+                )
+    except Exception as ex:
+        logger.warning("No se pudo registrar descargados.xlsx (ZIP listing). Detalle: %s", ex)
 
     # ---------- 2) Procesar ZIPs ----------
     logger.info("Extracting and processing ZIPs...")
@@ -116,13 +141,28 @@ def run_pipeline(
             run_safix_with_excel(
                 excel_path=excel_path,
                 aggregated_json_path=agg_by_id_json,
+                tracker=tracker,  # ✅ registra procesadas.xlsx
             )
+
+    # ✅ Guardar Excels
+    paths = tracker.save()
+    logger.info("Logs generated: descargados=%s | procesadas=%s", paths["descargados"], paths["procesadas"])
+
+    # ✅ Cleanup final: conservar PDFs, XMLs y los logs Excel
+    deleted_files, deleted_dirs = cleanup_output_dir_keep_pdf_xml(
+        output_dir=output_dir,
+        keep_exts=(".pdf", ".xml"),
+        keep_paths=(paths["descargados"], paths["procesadas"]),
+    )
+    logger.info("[CLEANUP] deleted_files=%s deleted_dirs=%s", deleted_files, deleted_dirs)
 
     return {
         "output_dir": output_dir,
         "download": dl,
         "extract": res,
         "aggregate_by_id": agg_res,
+        "logs": {"descargados": paths["descargados"], "procesadas": paths["procesadas"]},
+        "cleanup": {"deleted_files": deleted_files, "deleted_dirs": deleted_dirs},
         "paths": {
             "extract": extract_dir,
             "json": json_dir,
