@@ -109,9 +109,9 @@ class RunTracker:
     def save(self) -> dict[str, Path]:
         out = {}
 
-        p1 = self.logs_dir / "descargados.xlsx"
-        self._write_xlsx(p1, "descargados", [asdict(x) for x in self.downloads])
-        out["descargados"] = p1
+        # p1 = self.logs_dir / "descargados.xlsx"
+        # self._write_xlsx(p1, "descargados", [asdict(x) for x in self.downloads])
+        # out["descargados"] = p1
 
         p2 = self.logs_dir / "procesadas.xlsx"
         self._write_xlsx(p2, "procesadas", [asdict(x) for x in self.processed])

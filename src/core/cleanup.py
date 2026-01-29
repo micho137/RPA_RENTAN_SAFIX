@@ -7,7 +7,7 @@ from typing import Iterable, Set, Tuple
 
 def cleanup_output_dir_keep_pdf_xml(
     output_dir: Path,
-    keep_exts: Iterable[str] = (".pdf", ".xml"),
+    keep_exts: Iterable[str] = (".pdf", ".xml", ".csv"),
     keep_paths: Iterable[Path] = (),
 ) -> Tuple[int, int]:
     """
