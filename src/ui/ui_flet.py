@@ -23,8 +23,8 @@ def main(page: ft.Page):
     page.padding = 15
     page.scroll = None
 
-    BASE_W, BASE_H = 720, 600
-    EXP_W, EXP_H = 860, 720
+    BASE_W, BASE_H = 520, 600
+    EXP_W, EXP_H = 660, 720
 
     # Compatibilidad entre versiones (API vieja / nueva)
     try:

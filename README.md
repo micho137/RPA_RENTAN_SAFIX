@@ -7,38 +7,51 @@ Ideal para procesos corporativos donde Outlook es la herramienta principal de co
 
 ## Características principales
 
-- Acceso directo a Outlook Desktop usando COM (sin clics ni UI automation)
-- Descarga de adjuntos desde carpetas específicas (ej. FLYPASS, FACTURAS, etc.)
-- Filtrado por días y estado de lectura
-- Opción para marcar correos como leídos
-- Opción para mover correos procesados a otra carpeta
+- Acceso directo a Outlook Desktop usando COM (pywin32)
+- Descarga controlada de adjuntos desde carpetas específicas
+- Filtros por:
+  - Correos no leídos
+  - Rango de fechas
+- Extracción automática de ZIPs
+- Procesamiento de XML y PDF (OCR cuando aplica)
+- Consolidación por factura (document_id)
+- Automatización visual de SAFIX (PyAutoGUI + PyWinAuto)
+- Overlay de estado en tiempo real (documento, placa, progreso y tiempo)
+- Limpieza automática de archivos temporales
 - Logs rotativos detallados
-- Configuración sencilla mediante .env
-- Pruebas unitarias con mocks (no requiere Outlook real)
-- Arquitectura modular y escalable
+- Configuración centralizada mediante .env
+- Interfaz gráfica de usuario (Flet)
+- Empaquetable como ejecutable (.exe)
 
 ## Estructura del proyecto
 
 ```
-outlook-bot/
+.
 ├─ src/
-│  ├─ core/
-│  │  ├─ com_init.py              # Contexto COM seguro
-│  │  └─ logging_config.py        # Configuración centralizada de logs
-│  ├─ config.py                   # Carga de variables .env
-│  ├─ outlook/
-│  │  ├─ models.py                # Modelos de datos (MailSummary, SaveResult)
-│  │  ├─ client.py                # Cliente COM (bajo nivel)
-│  │  └─ service.py               # Lógica de negocio (guardar adjuntos, mover, etc.)
-│  └─ workflows/
-│     └─ download_attachments.py  # Flujo principal de descarga
-├─ tests/
-│  ├─ test_client.py              # Pruebas de estructura del cliente
-│  └─ test_workflow.py            # Pruebas del flujo con mocks
-├─ .env                           # Configuración de entorno
-├─ main.py                        # CLI principal
-├─ requirements.txt               # Dependencias
-└─ pytest.ini                     # Config opcional para pytest
+│ ├─ config.py
+│ ├─ core/
+│ │ ├─ com_init.py
+│ │ └─ logging_config.py
+│ ├─ outlook/
+│ │ ├─ client.py
+│ │ ├─ models.py
+│ │ └─ service.py
+│ ├─ processing/
+│ │ ├─ zip_invoice_extractor.py
+│ │ └─ aggregate_json.py
+│ ├─ workflows/
+│ │ ├─ download_attachments.py
+│ │ ├─ invoice_pipeline.py
+│ │ └─ safix_automation.py
+│ └─ ui/
+│ ├─ ui_flet.py
+│ └─ overlay_status.py
+├─ assets/
+├─ logs/
+├─ output/
+├─ .env.example
+├─ README.md
+└─ requirements.txt
 ```
 
 ## Requerimientos
@@ -46,6 +59,11 @@ outlook-bot/
 ### Sistema operativo
 - Windows 10 / 11
 - Outlook Desktop instalado y con sesión iniciada
+
+### Software requerido
+- Microsoft Outlook Desktop (sesión iniciada)
+- SAFIX / XENCO instalado
+- Acceso al archivo .jnlp de SAFIX
 
 ### Entorno Python
 - Python 3.9 o superior
@@ -121,15 +139,8 @@ Todos los valores son opcionales. Si no se especifican, el código usa los valor
 Ejecuta el comando principal:
 
 ```
-python main.py --download
+python -m src.ui.ui_flet
 ```
-
-Salida esperada:
-```
-Processed: 42 | Attachments saved: 128
-```
-
-Los adjuntos se guardarán en ./downloads/YYYY-MM-DD/
 
 ## Pruebas
 
