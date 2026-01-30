@@ -1,149 +1,101 @@
-from __future__ import annotations
-
-import os
-import sys
 from dataclasses import dataclass
-from pathlib import Path
+import os
 from dotenv import load_dotenv
+from pathlib import Path
+
+load_dotenv()
 
 
-# =========================
-# Resolución base (DEV vs EXE)
-# =========================
-def _base_dir() -> Path:
-    """
-    - En ejecutable (.exe): carpeta donde vive el ejecutable
-    - En desarrollo: raíz del proyecto
-    """
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parents[1]
-
-
-BASE_DIR = _base_dir()
-ENV_PATH = BASE_DIR / ".env"
-
-# Cargar .env explícitamente desde el directorio base
-if ENV_PATH.exists():
-    load_dotenv(dotenv_path=ENV_PATH)
-else:
-    raise RuntimeError(f"No se encontró el archivo .env en {ENV_PATH}")
-
-
-# =========================
-# Helper obligatorio
-# =========================
-def _env(name: str) -> str:
-    val = os.getenv(name)
-    if val is None or val.strip() == "":
-        raise RuntimeError(f"Variable de entorno obligatoria no definida: {name}")
-    return val.strip()
-
-
-def _env_path(name: str) -> Path:
-    return Path(_env(name)).expanduser().resolve()
-
-
-def _env_float(name: str) -> float:
-    try:
-        return float(_env(name))
-    except ValueError:
-        raise RuntimeError(f"Variable {name} debe ser numérica")
-
-
-# =========================
-# Settings
-# =========================
 @dataclass(frozen=True)
 class Settings:
-    # ---------- Outlook ----------
-    outlook_account: str
-    source_folder: str
-    download_dir: Path
-    processed_folder: str
-    log_dir: Path
+    # =========================
+    # OUTLOOK / DESCARGA (estático)
+    # =========================
+    outlook_account: str = os.getenv("OUTLOOK_ACCOUNT", "")
+    source_folder: str = os.getenv("OUTLOOK_FOLDER", "")
 
-    # ---------- SAFIX ----------
-    safix_shortcut: Path
-    safix_window_title: str
+    download_dir: Path = Path(os.getenv("DOWNLOAD_DIR", "./downloads")).resolve()
+    processed_folder: str = os.getenv("PROCESSED_FOLDER", "Procesados")
+    log_dir: Path = Path(os.getenv("LOG_DIR", "./logs")).resolve()
 
-    safix_tesoreria_icon: Path
-    safix_valores_icon: Path
-    safix_z_icon: Path
-    safix_engranes_icon: Path
+    # =========================
+    # PIPELINE / OUTPUT (estático)
+    # =========================
+    output_dir: Path = Path(os.getenv("OUTPUT_DIR", "./output")).resolve()
 
-    safix_user: str
-    safix_pass: str
-    safix_nit: str
+    extract_dir: Path = (
+        Path(os.getenv("EXTRACT_DIR", "")).resolve()
+        if os.getenv("EXTRACT_DIR")
+        else (output_dir / "extract")
+    )
+    json_dir: Path = (
+        Path(os.getenv("JSON_DIR", "")).resolve()
+        if os.getenv("JSON_DIR")
+        else (output_dir / "json")
+    )
+    text_dir: Path = (
+        Path(os.getenv("TEXT_DIR", "")).resolve()
+        if os.getenv("TEXT_DIR")
+        else (output_dir / "text")
+    )
 
-    safix_xot_code: str
-    safix_got_code: str
-    safix_campo_84: str
-    safix_campo_05: str
+    index_csv: Path = (
+        Path(os.getenv("INDEX_CSV", "")).resolve()
+        if os.getenv("INDEX_CSV")
+        else (json_dir / "index.csv")
+    )
+    invoices_by_id_path: Path = (
+        Path(os.getenv("INVOICES_BY_ID_PATH", "")).resolve()
+        if os.getenv("INVOICES_BY_ID_PATH")
+        else (json_dir / "all_invoices_by_id.json")
+    )
 
-    safix_obl_code: str
-    safix_obl2_code: str
+    # =========================
+    # SAFIX / XENCO (estático)
+    # =========================
+    safix_shortcut: Path = (
+        Path(os.getenv("SAFIX_SHORTCUT", "")).resolve()
+        if os.getenv("SAFIX_SHORTCUT")
+        else Path("")
+    )
 
-    safix_form_ready_wait: float
-    safix_login_wait: float
-    safix_pyauto_pause: float
-    safix_write_interval: float
-    safix_wait_default: float
-    safix_wait_long: float
-    safix_wait_popup: float
+    safix_window_title: str = os.getenv("SAFIX_WINDOW_TITLE", r".*XENCO - Administracion del Sistema.*")
 
+    safix_tesoreria_icon: str = os.getenv("SAFIX_TESORERIA_ICON", "assets/img.png")
+    safix_valores_icon: str = os.getenv("SAFIX_VALORES_ICON", "assets/img_1.png")
+    safix_z_icon: str = os.getenv("SAFIX_Z_ICON", "assets/Z.png")
+    safix_engranes_icon: str = os.getenv("SAFIX_ENGRANES_ICON", "assets/engranes.png")
 
-# =========================
-# Construcción explícita
-# =========================
-settings = Settings(
-    # Outlook
-    outlook_account=_env("OUTLOOK_ACCOUNT"),
-    source_folder=_env("OUTLOOK_FOLDER"),
-    download_dir=_env_path("DOWNLOAD_DIR"),
-    processed_folder=_env("PROCESSED_FOLDER"),
-    log_dir=_env_path("LOG_DIR"),
+    safix_user: str = os.getenv("SAFIX_USER", "")
+    safix_pass: str = os.getenv("SAFIX_PASS", "")
 
-    # SAFIX
-    safix_shortcut=_env_path("SAFIX_SHORTCUT"),
-    safix_window_title=_env("SAFIX_WINDOW_TITLE"),
+    safix_nit: str = os.getenv("SAFIX_NIT", "")
+    safix_xot_code: str = os.getenv("SAFIX_XOT_CODE", "XOT05")
+    safix_got_code: str = os.getenv("SAFIX_GOT_CODE", "GOT")
 
-    safix_tesoreria_icon=_env_path("SAFIX_TESORERIA_ICON"),
-    safix_valores_icon=_env_path("SAFIX_VALORES_ICON"),
-    safix_z_icon=_env_path("SAFIX_Z_ICON"),
-    safix_engranes_icon=_env_path("SAFIX_ENGRANES_ICON"),
+    safix_campo_84: str = os.getenv("SAFIX_CAMPO_84", "84")
+    safix_campo_05: str = os.getenv("SAFIX_CAMPO_05", "05")
+    safix_placa: str = os.getenv("SAFIX_PLACA")
 
-    safix_user=_env("SAFIX_USER"),
-    safix_pass=_env("SAFIX_PASS"),
-    safix_nit=_env("SAFIX_NIT"),
+    safix_obl_code: str = os.getenv("SAFIX_OBL_CODE", "OBL_EXCLU")
+    safix_obl2_code: str = os.getenv("SAFIX_OBL2_CODE", "OBL_ANTCON")
 
-    safix_xot_code=_env("SAFIX_XOT_CODE"),
-    safix_got_code=_env("SAFIX_GOT_CODE"),
-    safix_campo_84=_env("SAFIX_CAMPO_84"),
-    safix_campo_05=_env("SAFIX_CAMPO_05"),
-
-    safix_obl_code=_env("SAFIX_OBL_CODE"),
-    safix_obl2_code=_env("SAFIX_OBL2_CODE"),
-
-    safix_form_ready_wait=_env_float("SAFIX_FORM_READY_WAIT"),
-    safix_login_wait=_env_float("SAFIX_LOGIN_WAIT"),
-    safix_pyauto_pause=_env_float("SAFIX_PYAUTO_PAUSE"),
-    safix_write_interval=_env_float("SAFIX_WRITE_INTERVAL"),
-    safix_wait_default=_env_float("SAFIX_WAIT_DEFAULT"),
-    safix_wait_long=_env_float("SAFIX_WAIT_LONG"),
-    safix_wait_popup=_env_float("SAFIX_WAIT_POPUP"),
-)
+    safix_form_ready_wait: float = float(os.getenv("SAFIX_FORM_READY_WAIT", "50.0"))
+    safix_login_wait: float = float(os.getenv("SAFIX_LOGIN_WAIT", "15.0"))
+    safix_pyauto_pause: float = float(os.getenv("SAFIX_PYAUTO_PAUSE", "1.1"))
+    safix_write_interval: float = float(os.getenv("SAFIX_WRITE_INTERVAL", "0.10"))
+    safix_wait_default: float = float(os.getenv("SAFIX_WAIT_DEFAULT", "1.5"))
+    safix_wait_long: float = float(os.getenv("SAFIX_WAIT_LONG", "3.0"))
+    safix_wait_popup: float = float(os.getenv("SAFIX_WAIT_POPUP", "4.0"))
 
 
-# =========================
-# Crear directorios
-# =========================
-for p in [
-    settings.download_dir,
-    settings.log_dir,
-    settings.output_dir,
-    settings.extract_dir,
-    settings.json_dir,
-    settings.text_dir,
-]:
-    p.mkdir(parents=True, exist_ok=True)
+settings = Settings()
+
+# Dirs
+settings.download_dir.mkdir(parents=True, exist_ok=True)
+settings.log_dir.mkdir(parents=True, exist_ok=True)
+
+settings.output_dir.mkdir(parents=True, exist_ok=True)
+settings.extract_dir.mkdir(parents=True, exist_ok=True)
+settings.json_dir.mkdir(parents=True, exist_ok=True)
+settings.text_dir.mkdir(parents=True, exist_ok=True)
