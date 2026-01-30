@@ -1,4 +1,3 @@
-# src/ui_flet.py
 import threading
 from datetime import datetime, date
 from pathlib import Path

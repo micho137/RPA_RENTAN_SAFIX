@@ -113,14 +113,6 @@ settings = Settings(
     processed_folder=_env("PROCESSED_FOLDER"),
     log_dir=_env_path("LOG_DIR"),
 
-    # Pipeline
-    output_dir=_env_path("OUTPUT_DIR"),
-    extract_dir=_env_path("EXTRACT_DIR"),
-    json_dir=_env_path("JSON_DIR"),
-    text_dir=_env_path("TEXT_DIR"),
-    index_csv=_env_path("INDEX_CSV"),
-    invoices_by_id_path=_env_path("INVOICES_BY_ID_PATH"),
-
     # SAFIX
     safix_shortcut=_env_path("SAFIX_SHORTCUT"),
     safix_window_title=_env("SAFIX_WINDOW_TITLE"),
