@@ -2,7 +2,8 @@ from __future__ import annotations
 import re
 from typing import Optional, Tuple
 
-VALID_SERIES = {"DEFL", "DENC"}
+#VALID_SERIES = {"DEFL", "DENC"}
+VALID_SERIES = {"DEFL"}
 
 # Match "DEFL" o "DENC" con o sin guion y 8 dígitos
 DOC_ID_RE = re.compile(r"\b(?P<serie>DEFL|DENC)-?(?P<num>\d{8})\b", re.IGNORECASE)
