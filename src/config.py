@@ -63,14 +63,6 @@ class Settings:
     processed_folder: str
     log_dir: Path
 
-    # ---------- Pipeline ----------
-    output_dir: Path
-    extract_dir: Path
-    json_dir: Path
-    text_dir: Path
-    index_csv: Path
-    invoices_by_id_path: Path
-
     # ---------- SAFIX ----------
     safix_shortcut: Path
     safix_window_title: str
@@ -88,7 +80,6 @@ class Settings:
     safix_got_code: str
     safix_campo_84: str
     safix_campo_05: str
-    safix_placa: str
 
     safix_obl_code: str
     safix_obl2_code: str
@@ -130,7 +121,6 @@ settings = Settings(
     safix_got_code=_env("SAFIX_GOT_CODE"),
     safix_campo_84=_env("SAFIX_CAMPO_84"),
     safix_campo_05=_env("SAFIX_CAMPO_05"),
-    safix_placa=_env("SAFIX_PLACA"),
 
     safix_obl_code=_env("SAFIX_OBL_CODE"),
     safix_obl2_code=_env("SAFIX_OBL2_CODE"),
