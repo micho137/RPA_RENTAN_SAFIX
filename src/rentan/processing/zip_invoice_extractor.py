@@ -9,8 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Optional, List, Dict
 
-from PIL import Image  # (lo usas si luego agregas preprocesamiento OCR)
-
 # Fallbacks opcionales
 try:
     from pdfminer.high_level import extract_text as pdf_extract_text
@@ -27,7 +25,7 @@ try:
 except Exception:
     pytesseract = None
 
-from src.processing.doc_id import normalize_id, parse_any_id, split_parts
+from src.rentan.processing.doc_id import normalize_id, parse_any_id, split_parts
 
 
 NS = {

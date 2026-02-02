@@ -1,10 +1,15 @@
-# src/workflows/download_attachments.py
-from pathlib import Path
-from src.core.logging_config import setup_logger
-from src.core.com_init import com_initialized
-from src.config import settings
-from src.outlook.client import OutlookClient
-from src.outlook.service import OutlookService
+from __future__ import annotations
+
+import logging
+
+
+from src.rentan.core.com_init import com_initialized
+from src.rentan.config.config import settings
+from src.rentan.outlook.client import OutlookClient
+from src.rentan.outlook.service import OutlookService
+
+
+logger = logging.getLogger(__name__)
 
 
 def run_download(
@@ -14,11 +19,16 @@ def run_download(
     mark_as_read: bool,
     move_to_processed: bool,
 ):
-    logger = setup_logger("outlook_bot", settings.log_dir)
-
+    """
+    Descarga adjuntos desde Outlook según flags.
+    Todo el logging va al logger unificado (configurado en el entrypoint).
+    """
     logger.info(
         "[DL][FLAGS] only_unread=%s days_back=%s mark_as_read=%s move_to_processed=%s",
-        only_unread, days_back, mark_as_read, move_to_processed
+        only_unread,
+        days_back,
+        mark_as_read,
+        move_to_processed,
     )
 
     with com_initialized():
@@ -27,7 +37,7 @@ def run_download(
 
         folder, store = service.get_folder(
             account_display=settings.outlook_account,
-            folder_path=[settings.source_folder]
+            folder_path=[settings.source_folder],
         )
 
         move_to = None
@@ -40,7 +50,14 @@ def run_download(
             days_back=days_back,
             only_unread=only_unread,
             mark_as_read=mark_as_read,
-            move_to=move_to
+            move_to=move_to,
         )
 
+    logger.info(
+        "[DL] Finished | processed=%s attachments_saved=%s errors=%s out_dir=%s",
+        res.processed,
+        res.attachments_saved,
+        res.errors,
+        res.out_dir,
+    )
     return res

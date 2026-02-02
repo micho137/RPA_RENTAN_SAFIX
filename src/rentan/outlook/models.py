@@ -14,4 +14,5 @@ class MailSummary:
 class SaveResult:
     processed: int = 0
     attachments_saved: int = 0
+    errors: int = 0
     out_dir: Path | None = None
