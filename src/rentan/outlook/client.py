@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Iterable, Iterator, Tuple, Optional, Any
-
 import win32com.client
+from datetime import datetime, timedelta
+from dateutil.tz import tzlocal
+from typing import Iterable, Iterator, Tuple, List, Optional
+
+
+MAILITEM_CLASS = 43  # Outlook.MailItem
 
 
 class OutlookClient:
@@ -25,80 +28,114 @@ class OutlookClient:
         return folder
 
     # ------------------------------
-    # Helpers de fecha (robusto)
-    # ------------------------------
-    @staticmethod
-    def _to_naive(dt: Any) -> Optional[datetime]:
-        """
-        Outlook COM normalmente retorna datetime naive (local),
-        pero en algunos entornos puede venir con tzinfo.
-        Normalizamos a naive para comparar consistente.
-        """
-        if dt is None:
-            return None
-        if isinstance(dt, datetime):
-            if dt.tzinfo is not None:
-                return dt.replace(tzinfo=None)
-            return dt
-        return None
-
-    # ------------------------------
     # Iteración segura (snapshot)
     # ------------------------------
-    def _build_items_snapshot(self, folder, days_back: int = 0, only_unread: bool = False) -> list[Tuple[str, str]]:
+    def _build_items_snapshot(
+        self,
+        folder,
+        days_back: int = 0,
+        only_unread: bool = False,
+        limit: int = 10000,
+    ) -> List[Tuple[str, str]]:
         """
         Devuelve lista estable de (EntryID, StoreID) en el orden actual.
-        Evita "out of range" cuando se marca leído o se mueve el correo.
 
-        Nota importante:
-        - NO usamos Items.Restrict() para fechas porque es frágil con locales (dd/mm vs mm/dd)
-          y puede devolver 0 items aunque existan correos (caso típico cuando hay pocos).
-        - Filtramos en Python leyendo ReceivedTime del item.
+        Cambio clave:
+        - NO usamos items.Item(i) porque Outlook COM falla de forma intermitente,
+          especialmente con colecciones pequeñas (1 item) o Restrict().
+        - Usamos GetFirst()/GetNext() que es la forma robusta de iterar.
         """
         items = folder.Items
-        items.Sort("[ReceivedTime]", True)
+        # Ordenar por fecha descendente (más reciente primero)
+        try:
+            items.Sort("[ReceivedTime]", True)
+        except Exception:
+            pass
 
-        # Si days_back > 0 => solo correos desde "since"
-        since = None
-        if days_back and days_back > 0:
-            since = datetime.now() - timedelta(days=int(days_back))
-            since = since.replace(tzinfo=None)
+        # Aplicar filtros si corresponde
+        if days_back > 0 or only_unread:
+            items = self._restrict_items(items, days_back=days_back, only_unread=only_unread)
 
-        snap: list[Tuple[str, str]] = []
-        count = int(getattr(items, "Count", 0) or 0)
+        snap: List[Tuple[str, str]] = []
 
-        # Colección MAPI es 1-based
-        for i in range(1, count + 1):
+        try:
+            it = items.GetFirst()
+        except Exception:
+            it = None
+
+        n = 0
+        while it is not None and n < limit:
+            n += 1
             try:
-                it = items.Item(i)
-
-                # Filtro unread (si aplica)
-                if only_unread:
+                # Filtrar solo MailItem real
+                if int(getattr(it, "Class", 0) or 0) != MAILITEM_CLASS:
                     try:
-                        if not bool(getattr(it, "UnRead", False)):
-                            continue
+                        it = items.GetNext()
                     except Exception:
-                        continue
-
-                # Filtro fecha (si aplica)
-                if since is not None:
-                    received = self._to_naive(getattr(it, "ReceivedTime", None))
-                    if received is None:
-                        continue
-                    if received < since:
-                        continue
+                        break
+                    continue
 
                 entry_id = str(getattr(it, "EntryID", "") or "")
                 store_id = str(getattr(it, "StoreID", "") or "")
-
                 if entry_id and store_id:
                     snap.append((entry_id, store_id))
 
+                try:
+                    it = items.GetNext()
+                except Exception:
+                    break
+
             except Exception:
-                # si un item se corrompe o no es MailItem, lo saltamos
-                continue
+                # Si este item falla, intentamos avanzar
+                try:
+                    it = items.GetNext()
+                except Exception:
+                    break
 
         return snap
+
+    def _restrict_items(self, items, days_back: int, only_unread: bool):
+        """
+        Restrict robusto usando @SQL (DASL).
+        Esto evita problemas de formato regional con ReceivedTime.
+        """
+        clauses = []
+
+        if days_back > 0:
+            since = (datetime.now(tzlocal()) - timedelta(days=days_back))
+            # Formato recomendado para DASL: YYYY-MM-DD HH:MM
+            since_str = since.strftime("%Y-%m-%d %H:%M")
+            # datereceived
+            clauses.append(f"\"urn:schemas:httpmail:datereceived\" >= '{since_str}'")
+
+        if only_unread:
+            # read = 0 => no leído
+            clauses.append("\"urn:schemas:httpmail:read\" = 0")
+
+        if not clauses:
+            return items
+
+        sql = "@SQL=" + " AND ".join(clauses)
+
+        try:
+            return items.Restrict(sql)
+        except Exception:
+            # Fallback a Restrict clásico (menos robusto)
+            filters = []
+            if days_back > 0:
+                since = (datetime.now(tzlocal()) - timedelta(days=days_back))
+                since_str = since.strftime("%m/%d/%Y %I:%M %p")
+                filters.append(f"[ReceivedTime] >= '{since_str}'")
+            if only_unread:
+                filters.append("[UnRead] = True")
+
+            if filters:
+                try:
+                    return items.Restrict(" AND ".join(filters))
+                except Exception:
+                    return items
+
+        return items
 
     def iter_items(self, folder, days_back: int = 0, only_unread: bool = False) -> Iterator:
         """
