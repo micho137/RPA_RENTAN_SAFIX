@@ -2,11 +2,19 @@ from __future__ import annotations
 
 import win32com.client
 from datetime import datetime, timedelta
-from dateutil.tz import tzlocal
-from typing import Iterable, Iterator, Tuple
+from typing import Iterable, Iterator, Tuple, Optional
 
 
 class OutlookClient:
+    """
+    Cliente Outlook robusto:
+    - NO usa Items.Restrict() para evitar problemas de formato regional y propiedades MAPI.
+    - Aplica filtros (days_back / only_unread) en Python.
+    - Itera con snapshot (EntryID, StoreID) para no romperse si marcas leído o mueves correos.
+    """
+
+    MAILITEM_CLASS = 43  # Outlook MailItem
+
     def __init__(self):
         self._app = win32com.client.Dispatch("Outlook.Application")
         self._ns = self._app.GetNamespace("MAPI")
@@ -27,46 +35,86 @@ class OutlookClient:
     # ------------------------------
     # Iteración segura (snapshot)
     # ------------------------------
-    def _build_items_snapshot(self, folder, days_back: int = 0, only_unread: bool = False) -> list[Tuple[str, str]]:
+    def _build_items_snapshot(
+        self,
+        folder,
+        days_back: int = 0,
+        only_unread: bool = False,
+        limit: Optional[int] = None,
+    ) -> list[Tuple[str, str]]:
         """
         Devuelve lista estable de (EntryID, StoreID) en el orden actual.
-        Esto evita "out of range" cuando se marca leído o se mueve el correo.
+        Evita "out of range" cuando se marca leído o se mueve el correo.
+
+        Aplica filtros en Python:
+        - days_back: filtra por ReceivedTime >= now - days_back
+        - only_unread: filtra por item.UnRead == True
+
+        limit: corta el snapshot al número máximo de items.
         """
         items = folder.Items
         items.Sort("[ReceivedTime]", True)
 
-        filters = []
-        if days_back > 0:
-            since = (datetime.now(tzlocal()) - timedelta(days=days_back))
-            since_str = since.strftime("%m/%d/%Y %I:%M %p")
-            filters.append(f"[ReceivedTime] >= '{since_str}'")
-        if only_unread:
-            filters.append("[UnRead] = True")
-        if filters:
-            items = items.Restrict(" AND ".join(filters))
-
         snap: list[Tuple[str, str]] = []
         count = int(getattr(items, "Count", 0) or 0)
 
+        since_dt = None
+        if days_back and days_back > 0:
+            since_dt = datetime.now() - timedelta(days=int(days_back))
+
         # OJO: colección MAPI es 1-based
         for i in range(1, count + 1):
+            if limit is not None and len(snap) >= limit:
+                break
+
             try:
                 it = items.Item(i)
+
+                # Asegura MailItem
+                it_class = int(getattr(it, "Class", 0) or 0)
+                if it_class != self.MAILITEM_CLASS:
+                    continue
+
+                # Filtro unread (en Python)
+                if only_unread:
+                    if not bool(getattr(it, "UnRead", False)):
+                        continue
+
+                # Filtro fecha (en Python)
+                if since_dt is not None:
+                    received = getattr(it, "ReceivedTime", None)
+                    if received is None:
+                        continue
+
+                    # ReceivedTime suele ser datetime “naive” desde COM
+                    # Comparamos naive vs naive (datetime.now() es naive)
+                    try:
+                        if received < since_dt:
+                            continue
+                    except Exception:
+                        continue
+
                 entry_id = str(getattr(it, "EntryID", "") or "")
                 store_id = str(getattr(it, "StoreID", "") or "")
                 if entry_id and store_id:
                     snap.append((entry_id, store_id))
+
             except Exception:
-                # si un item se corrompe o no es MailItem, lo saltamos
                 continue
 
         return snap
 
-    def iter_items(self, folder, days_back: int = 0, only_unread: bool = False) -> Iterator:
+    def iter_items(
+        self,
+        folder,
+        days_back: int = 0,
+        only_unread: bool = False,
+        limit: Optional[int] = None,
+    ) -> Iterator:
         """
         Itera MailItems vía snapshot: no se rompe si cambias UnRead o haces Move().
         """
-        snap = self._build_items_snapshot(folder, days_back=days_back, only_unread=only_unread)
+        snap = self._build_items_snapshot(folder, days_back=days_back, only_unread=only_unread, limit=limit)
         for entry_id, store_id in snap:
             try:
                 yield self._ns.GetItemFromID(entry_id, store_id)
