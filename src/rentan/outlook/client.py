@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Iterable, Iterator, Tuple, Optional
-
 import win32com.client
+from datetime import datetime, timedelta
 from dateutil.tz import tzlocal
+from typing import Iterable, Iterator, Tuple
 
 
 class OutlookClient:
@@ -26,88 +25,40 @@ class OutlookClient:
         return folder
 
     # ------------------------------
-    # Iteración estable (SIN Restrict)
+    # Iteración segura (snapshot)
     # ------------------------------
-    def _build_items_snapshot(
-        self,
-        folder,
-        days_back: int = 0,
-        only_unread: bool = False,
-        hard_limit: int = 5000,
-    ) -> list[Tuple[str, str]]:
+    def _build_items_snapshot(self, folder, days_back: int = 0, only_unread: bool = False) -> list[Tuple[str, str]]:
         """
         Devuelve lista estable de (EntryID, StoreID) en el orden actual.
-
-        Importante:
-        - Evitamos Restrict() porque es frágil (locale/format) y puede devolver 0 items
-          incluso cuando sí hay correos (caso típico: solo 1 correo en el rango).
-        - En su lugar, iteramos GetFirst/GetNext y filtramos en Python.
+        Esto evita "out of range" cuando se marca leído o se mueve el correo.
         """
-
         items = folder.Items
-        try:
-            items.Sort("[ReceivedTime]", True)  # desc
-        except Exception:
-            # si falla el sort, igual intentamos iterar
-            pass
+        items.Sort("[ReceivedTime]", True)
 
-        since_dt: Optional[datetime] = None
-        if days_back and days_back > 0:
-            since_dt = datetime.now(tzlocal()) - timedelta(days=days_back)
+        filters = []
+        if days_back > 0:
+            since = (datetime.now(tzlocal()) - timedelta(days=days_back))
+            since_str = since.strftime("%m/%d/%Y %I:%M %p")
+            filters.append(f"[ReceivedTime] >= '{since_str}'")
+        if only_unread:
+            filters.append("[UnRead] = True")
+        if filters:
+            items = items.Restrict(" AND ".join(filters))
 
         snap: list[Tuple[str, str]] = []
+        count = int(getattr(items, "Count", 0) or 0)
 
-        # Iteración COM segura
-        try:
-            it = items.GetFirst()
-        except Exception:
-            it = None
-
-        n = 0
-        while it is not None:
-            n += 1
-            if n > hard_limit:
-                break
-
+        # OJO: colección MAPI es 1-based
+        for i in range(1, count + 1):
             try:
-                # Filtro unread
-                if only_unread:
-                    unread = bool(getattr(it, "UnRead", False))
-                    if not unread:
-                        it = items.GetNext()
-                        continue
-
-                # Filtro fecha
-                if since_dt is not None:
-                    received = getattr(it, "ReceivedTime", None)
-                    if received is None:
-                        it = items.GetNext()
-                        continue
-
-                    # Outlook suele retornar datetime naive; lo tratamos como local.
-                    if received.tzinfo is None:
-                        received_local = received.replace(tzinfo=tzlocal())
-                    else:
-                        received_local = received
-
-                    if received_local < since_dt:
-                        # Como está ordenado DESC, al encontrar uno más viejo,
-                        # ya podemos cortar (optimiza mucho).
-                        break
-
+                it = items.Item(i)
                 entry_id = str(getattr(it, "EntryID", "") or "")
                 store_id = str(getattr(it, "StoreID", "") or "")
                 if entry_id and store_id:
                     snap.append((entry_id, store_id))
-
             except Exception:
-                # saltar items dañados/no MailItem
-                pass
-
-            try:
-                it = items.GetNext()
-            except Exception:
-                it = None
+                # si un item se corrompe o no es MailItem, lo saltamos
+                continue
 
         return snap
 
@@ -146,4 +97,5 @@ class OutlookClient:
         atts = getattr(mail_item, "Attachments", None)
         if not atts or getattr(atts, "Count", 0) == 0:
             return []
+        # Colección MAPI es 1-based
         return [atts.Item(i) for i in range(1, atts.Count + 1)]
