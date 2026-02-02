@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import win32com.client
 from datetime import datetime, timedelta
-from dateutil.tz import tzlocal
-from typing import Iterable, Iterator, Tuple
+from typing import Iterable, Iterator, Tuple, Optional, Any
+
+import win32com.client
 
 
 class OutlookClient:
@@ -25,37 +25,75 @@ class OutlookClient:
         return folder
 
     # ------------------------------
+    # Helpers de fecha (robusto)
+    # ------------------------------
+    @staticmethod
+    def _to_naive(dt: Any) -> Optional[datetime]:
+        """
+        Outlook COM normalmente retorna datetime naive (local),
+        pero en algunos entornos puede venir con tzinfo.
+        Normalizamos a naive para comparar consistente.
+        """
+        if dt is None:
+            return None
+        if isinstance(dt, datetime):
+            if dt.tzinfo is not None:
+                return dt.replace(tzinfo=None)
+            return dt
+        return None
+
+    # ------------------------------
     # Iteración segura (snapshot)
     # ------------------------------
     def _build_items_snapshot(self, folder, days_back: int = 0, only_unread: bool = False) -> list[Tuple[str, str]]:
         """
         Devuelve lista estable de (EntryID, StoreID) en el orden actual.
-        Esto evita "out of range" cuando se marca leído o se mueve el correo.
+        Evita "out of range" cuando se marca leído o se mueve el correo.
+
+        Nota importante:
+        - NO usamos Items.Restrict() para fechas porque es frágil con locales (dd/mm vs mm/dd)
+          y puede devolver 0 items aunque existan correos (caso típico cuando hay pocos).
+        - Filtramos en Python leyendo ReceivedTime del item.
         """
         items = folder.Items
         items.Sort("[ReceivedTime]", True)
 
-        filters = []
-        if days_back > 0:
-            since = (datetime.now(tzlocal()) - timedelta(days=days_back))
-            since_str = since.strftime("%m/%d/%Y %I:%M %p")
-            filters.append(f"[ReceivedTime] >= '{since_str}'")
-        if only_unread:
-            filters.append("[UnRead] = True")
-        if filters:
-            items = items.Restrict(" AND ".join(filters))
+        # Si days_back > 0 => solo correos desde "since"
+        since = None
+        if days_back and days_back > 0:
+            since = datetime.now() - timedelta(days=int(days_back))
+            since = since.replace(tzinfo=None)
 
         snap: list[Tuple[str, str]] = []
         count = int(getattr(items, "Count", 0) or 0)
 
-        # OJO: colección MAPI es 1-based
+        # Colección MAPI es 1-based
         for i in range(1, count + 1):
             try:
                 it = items.Item(i)
+
+                # Filtro unread (si aplica)
+                if only_unread:
+                    try:
+                        if not bool(getattr(it, "UnRead", False)):
+                            continue
+                    except Exception:
+                        continue
+
+                # Filtro fecha (si aplica)
+                if since is not None:
+                    received = self._to_naive(getattr(it, "ReceivedTime", None))
+                    if received is None:
+                        continue
+                    if received < since:
+                        continue
+
                 entry_id = str(getattr(it, "EntryID", "") or "")
                 store_id = str(getattr(it, "StoreID", "") or "")
+
                 if entry_id and store_id:
                     snap.append((entry_id, store_id))
+
             except Exception:
                 # si un item se corrompe o no es MailItem, lo saltamos
                 continue
@@ -97,5 +135,4 @@ class OutlookClient:
         atts = getattr(mail_item, "Attachments", None)
         if not atts or getattr(atts, "Count", 0) == 0:
             return []
-        # Colección MAPI es 1-based
         return [atts.Item(i) for i in range(1, atts.Count + 1)]

@@ -1,36 +1,20 @@
-from __future__ import annotations
-
 import threading
 from datetime import datetime, date
 from pathlib import Path
 import unicodedata
-import logging
 
 import flet as ft
 from openpyxl import load_workbook
 
 from src.rentan.workflows.invoice_pipeline import run_pipeline
-from src.rentan.config.config import settings, ensure_dirs
-from src.rentan.core.logging_config import setup_logging, setup_stdout_stderr_to_logging, install_global_excepthook
 
 DATE_FMT = "%d/%m/%Y"
 
 ALLOWED_EXCEL_BASENAME = "Centros de Costos Vehiculos"
-EXPECTED_HEADERS = ["N° VEHICULO", "PLACA", "UBICACIÓN", "CENTRO DE COSTOS", "INTERFACE"]
+EXPECTED_HEADERS = ["N° VEHICULO", "PLACA", "UBICACIÓN", "CENTRO DE COSTOS", "INTERFACE", "DOBLE CC"]
 
 
 def main(page: ft.Page):
-    # Logging unificado + captura prints
-    setup_logging(settings.log_dir)
-    setup_stdout_stderr_to_logging(logger_name="console")
-    install_global_excepthook()
-
-    logger = logging.getLogger("ui")
-    logger.info("UI started")
-
-    # Crear dirs base (sin side-effects en import)
-    ensure_dirs(settings)
-
     # ===============================
     # CONFIGURACIÓN DE VENTANA
     # ===============================
@@ -38,7 +22,7 @@ def main(page: ft.Page):
     page.padding = 15
     page.scroll = None
 
-    BASE_W, BASE_H = 520, 600
+    BASE_W, BASE_H = 520, 680
     EXP_W, EXP_H = 660, 720
 
     # Compatibilidad entre versiones (API vieja / nueva)
@@ -72,6 +56,7 @@ def main(page: ft.Page):
         return d.strftime(DATE_FMT)
 
     def to_date(v) -> date:
+        """Convierte date|datetime a date (Flet a veces retorna datetime)."""
         if isinstance(v, datetime):
             return v.date()
         return v
@@ -116,6 +101,13 @@ def main(page: ft.Page):
     EXPECTED_HEADERS_NORM = [normalize_header(h) for h in EXPECTED_HEADERS]
 
     def validate_excel_file(path_str: str) -> tuple[bool, str]:
+        """
+        Valida:
+        1) Existe
+        2) Nombre exacto
+        3) Extensión .xlsx
+        4) Cabeceras A1:F1
+        """
         p = Path(path_str)
 
         if not path_str.strip():
@@ -147,14 +139,13 @@ def main(page: ft.Page):
                 return (
                     False,
                     "Las cabeceras no coinciden.\n"
-                    f"Esperado (A1:E1): {esperado}\n"
-                    f"Encontrado (A1:E1): {encontrado}"
+                    f"Esperado (A1:F1): {esperado}\n"
+                    f"Encontrado (A1:F1): {encontrado}"
                 )
 
             return True, ""
 
         except Exception as ex:
-            logger.exception("No se pudo validar Excel: %s", ex)
             return False, f"No se pudo leer el Excel para validar cabeceras. Detalle: {ex}"
 
     # ===============================
@@ -165,10 +156,8 @@ def main(page: ft.Page):
     def on_file_picked(e: ft.FilePickerResultEvent):
         if e.files:
             selected_file_txt.value = e.files[0].path
-            logger.info("Excel seleccionado: %s", selected_file_txt.value)
         else:
             selected_file_txt.value = ""
-            logger.info("Selección Excel vacía")
         refresh()
         page.update()
 
@@ -216,7 +205,6 @@ def main(page: ft.Page):
             clamp_range()
             refresh()
             page.update()
-            logger.info("Rango fechas: start=%s end=%s", selected_start, selected_end)
         restore_window()
 
     def on_dp_hasta_change(e):
@@ -227,7 +215,6 @@ def main(page: ft.Page):
             clamp_range()
             refresh()
             page.update()
-            logger.info("Rango fechas: start=%s end=%s", selected_start, selected_end)
         restore_window()
 
     def build_datepicker(on_change_cb, on_dismiss_cb):
@@ -327,17 +314,8 @@ def main(page: ft.Page):
             mark_as_read = bool(mark_as_read_cb.value)
             move_to_processed = bool(move_to_processed_cb.value)
 
-            logger.info(
-                "Ejecutando | excel=%s | days_back=%s | only_unread=%s | mark_as_read=%s | move_to_processed=%s",
-                excel_path_str,
-                days_back,
-                only_unread,
-                mark_as_read,
-                move_to_processed,
-            )
-
             run_pipeline(
-                output_dir=settings.output_dir,
+                output_dir=Path("./output"),
                 lang="spa",
                 dpi=300,
                 aggregate_by_id=True,
@@ -350,10 +328,8 @@ def main(page: ft.Page):
             )
 
             set_status("Proceso finalizado correctamente. Pipeline + SAFIX ejecutados.")
-            logger.info("Proceso finalizado OK")
 
         except Exception as ex:
-            logger.exception("Error ejecutando pipeline: %s", ex)
             set_status(f"Error: {ex}", is_error=True)
         finally:
             run_btn.disabled = False

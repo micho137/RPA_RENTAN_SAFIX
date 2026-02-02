@@ -17,23 +17,30 @@ from src.rentan.config.config import settings
 from src.rentan.ui.overlay_status import StatusOverlay
 
 
+# =========================
+# Logger
+# =========================
 logger = logging.getLogger(__name__)
 
-PLACA_REGEX = re.compile(r"\bPLACA\b\s*[:\-]?\s*([A-Z0-9]{5,8})\b", re.IGNORECASE)
 
-
-def log_print(message: str, level: str = "info") -> None:
+def _log_print(msg: str, level: str = "info") -> None:
     """
-    Imprime en consola y registra en el log unificado.
+    Imprime en consola y también registra en el logger.
     level: info | warning | error
     """
-    print(message)
+    print(msg)
     if level == "warning":
-        logger.warning(message)
+        logger.warning(msg)
     elif level == "error":
-        logger.error(message)
+        logger.error(msg)
     else:
-        logger.info(message)
+        logger.info(msg)
+
+
+# =========================
+# Regex / Utilidades
+# =========================
+PLACA_REGEX = re.compile(r"\bPLACA\b\s*[:\-]?\s*([A-Z0-9]{5,8})\b", re.IGNORECASE)
 
 
 def _strip_quotes(s: str) -> str:
@@ -49,6 +56,9 @@ def normalize_placa(s: str) -> str:
     return re.sub(r"\s+", "", str(s or "").strip().upper())
 
 
+# =========================
+# Loaders
+# =========================
 def load_invoices_by_id(path: Path) -> Dict[str, Any]:
     if not path.exists():
         raise FileNotFoundError(f"No existe el agregado invoices_by_id: {path}")
@@ -58,7 +68,18 @@ def load_invoices_by_id(path: Path) -> Dict[str, Any]:
     return data
 
 
-def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]:
+def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, Any]]:
+    """
+    Lee el Excel y retorna un catálogo por placa:
+      {
+        "ABC123": {"interface": "XXXX", "centro_costos": "YYYY", "doble_cc": True/False},
+        ...
+      }
+
+    Requiere columnas:
+      PLACA, CENTRO DE COSTOS, INTERFACE, DOBLE CC
+    Donde DOBLE CC tiene "X" si NO debe procesarse (pendiente).
+    """
     if not excel_path.exists():
         raise FileNotFoundError(f"No existe el Excel de placas: {excel_path}")
 
@@ -71,7 +92,7 @@ def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]
         if h:
             headers[h] = col_idx
 
-    required = ["PLACA", "CENTRO DE COSTOS", "INTERFACE"]
+    required = ["PLACA", "CENTRO DE COSTOS", "INTERFACE", "DOBLE CC"]
     missing = [r for r in required if r not in headers]
     if missing:
         raise ValueError(
@@ -79,7 +100,7 @@ def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]
             f"Encontradas: {list(headers.keys())}"
         )
 
-    catalog: Dict[str, Dict[str, str]] = {}
+    catalog: Dict[str, Dict[str, Any]] = {}
     for row_idx in range(2, ws.max_row + 1):
         placa_val = ws.cell(row=row_idx, column=headers["PLACA"]).value
         if not placa_val:
@@ -91,20 +112,27 @@ def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]
 
         centro_costos = ws.cell(row=row_idx, column=headers["CENTRO DE COSTOS"]).value
         interface = ws.cell(row=row_idx, column=headers["INTERFACE"]).value
+        doble_cc_val = ws.cell(row=row_idx, column=headers["DOBLE CC"]).value
+
+        doble_cc = str(doble_cc_val or "").strip().upper() == "X"
 
         catalog[placa] = {
             "centro_costos": str(centro_costos or "").strip(),
             "interface": str(interface or "").strip(),
+            "doble_cc": bool(doble_cc),
         }
 
     return catalog
 
 
+# =========================
+# Extracción de campos (doc_id, placa, total)
+# =========================
 def extract_doc_plate_and_total(
     invoice: Dict[str, Any],
-    fallback_plate: str,
     key_fallback_doc_id: Optional[str] = None,
 ) -> Tuple[str, str, int]:
+    # -------- document_id --------
     doc_id = ((invoice.get("document") or {}).get("document_id")) or ""
     doc_id = str(doc_id).strip()
 
@@ -116,6 +144,7 @@ def extract_doc_plate_and_total(
 
     doc_id = doc_id.replace("-", "").strip()
 
+    # -------- placa --------
     placa = invoice.get("placa") or (invoice.get("vehiculo") or {}).get("placa") or ""
     placa = str(placa).strip()
 
@@ -127,12 +156,11 @@ def extract_doc_plate_and_total(
                 placa = m.group(1).strip()
                 break
 
-    if not placa:
-        m2 = PLACA_REGEX.search(str(fallback_plate))
-        placa = (m2.group(1).strip() if m2 else str(fallback_plate).strip())
-
     placa = normalize_placa(placa)
+    if not placa:
+        raise ValueError(f"Factura {doc_id}: no se pudo extraer PLACA desde la factura.")
 
+    # -------- total (peaje) --------
     total_val = ((invoice.get("totales") or {}).get("total"))
     if total_val is None:
         raise ValueError(f"Factura {doc_id}: no trae totales.total")
@@ -145,16 +173,22 @@ def extract_doc_plate_and_total(
     return doc_id, placa, total_int
 
 
+# =========================
+# Config SAFIX
+# =========================
 @dataclass(frozen=True)
 class SafixConfig:
+    # App/ventana
     jnlp_path: Path
     main_window_title_re: str
 
+    # UI (icons)
     tesoreria_icon: Path
     valores_icon: Path
     z_icon: Path
     engranes_icon: Path
 
+    # Credenciales / negocio
     user: str
     password: str
     nit: str
@@ -165,6 +199,7 @@ class SafixConfig:
     obl_code: str
     obl2_code: str
 
+    # Timing
     form_ready_wait: float
     login_wait: float
     pyauto_pause: float
@@ -173,8 +208,8 @@ class SafixConfig:
     wait_long: float
     wait_popup: float
 
+    # Inputs de data
     invoices_by_id_path: Path
-    fallback_placa: str
 
     @staticmethod
     def from_settings() -> "SafixConfig":
@@ -210,10 +245,12 @@ class SafixConfig:
             wait_long=float(getattr(settings, "safix_wait_long", 1.2) or 1.2),
             wait_popup=float(getattr(settings, "safix_wait_popup", 1.6) or 1.6),
             invoices_by_id_path=_p("invoices_by_id_path"),
-            fallback_placa=str(getattr(settings, "safix_placa", "") or "").strip(),
         )
 
 
+# =========================
+# Automatizador SAFIX
+# =========================
 class SafixAutomator:
     def __init__(self, cfg: SafixConfig) -> None:
         self.cfg = cfg
@@ -222,6 +259,7 @@ class SafixAutomator:
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = self.cfg.pyauto_pause
 
+    # ---------- Ventanas ----------
     def _wait_for_window_win32(
         self,
         title_re: str,
@@ -278,6 +316,7 @@ class SafixAutomator:
         window.set_focus()
         return app, window
 
+    # ---------- Helpers ----------
     def wait(self, t: Optional[float] = None):
         time.sleep(self.cfg.wait_default if t is None else t)
 
@@ -304,6 +343,7 @@ class SafixAutomator:
             if wait_each is not None:
                 self.wait(wait_each)
 
+    # ---------- Login ----------
     def do_login(self):
         self.wait(1.2)
         self.write_text_safe(self.cfg.user)
@@ -314,6 +354,7 @@ class SafixAutomator:
         self.write_text_safe(self.cfg.password)
         pyautogui.press("enter")
 
+    # ---------- Click imagen ----------
     def click_image(self, image_path: str | Path, timeout: float = 40.0, interval: float = 1.0) -> bool:
         icon_path = Path(image_path)
         if not icon_path.exists():
@@ -333,6 +374,7 @@ class SafixAutomator:
     def click_tesoreria(self):
         return self.click_image(self.cfg.tesoreria_icon)
 
+    # ---------- ALT+P,O,G ----------
     def alt_p_o_g(self):
         pyautogui.keyDown("alt")
         time.sleep(0.1)
@@ -345,6 +387,7 @@ class SafixAutomator:
         pyautogui.keyUp("alt")
         time.sleep(1.2)
 
+    # ---------- Escribir en modal CTRL + L ----------
     def escribir_modal(self, text_str: str):
         pyautogui.hotkey("ctrl", "l")
         self.wait(self.cfg.wait_default)
@@ -358,6 +401,7 @@ class SafixAutomator:
 
         self.press_enter(2, self.cfg.wait_long)
 
+    # ---------- Proceso por factura ----------
     def procesar_factura(
         self,
         document_id: str,
@@ -444,6 +488,7 @@ class SafixAutomator:
         self.refocus_main()
         self.wait(0.4)
 
+    # ---------- Bootstrap ----------
     def bootstrap(self):
         self.launch_and_focus_main()
         time.sleep(self.cfg.form_ready_wait)
@@ -464,97 +509,22 @@ class SafixAutomator:
         self.wait(self.cfg.wait_long)
 
 
-def run_safix_from_aggregated_json() -> None:
-    cfg = SafixConfig.from_settings()
-
-    invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
-    if not invoices_by_id:
-        log_print("[SAFIX] No hay facturas. No se ejecuta.")
-        return
-
-    items = list(invoices_by_id.items())
-    total_invoices = len(items)
-
-    overlay = StatusOverlay(width=340, height=165)
-    overlay.start()
-    overlay.update(etapa="AIVO: RENTAN", current=0, total=total_invoices, extra="Iniciando SAFIX…")
-
-    automator = SafixAutomator(cfg)
-
-    log_print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
-    log_print(f"[SAFIX] total facturas: {total_invoices}")
-
-    automator.bootstrap()
-    automator.refocus_main()
-    automator.wait(1.0)
-
-    ok = 0
-    fail = 0
-
-    for idx, (key, invoice) in enumerate(items, start=1):
-        doc_id = ""
-        placa = ""
-        try:
-            doc_id, placa, total = extract_doc_plate_and_total(
-                invoice,
-                fallback_plate=cfg.fallback_placa,
-                key_fallback_doc_id=key,
-            )
-
-            overlay.update(
-                etapa="AIVO: Procesando factura",
-                document_id=doc_id,
-                placa=placa,
-                current=idx,
-                total=total_invoices,
-                extra="",
-            )
-
-            automator.refocus_main()
-            automator.wait(0.6)
-
-            automator.procesar_factura(
-                document_id=doc_id,
-                placa=placa,
-                interface="",
-                centro_costos="",
-                peaje_total=total,
-            )
-
-            ok += 1
-
-        except Exception as e:
-            fail += 1
-            overlay.update(
-                etapa="AIVO: ERROR",
-                document_id=doc_id,
-                placa=placa,
-                current=idx,
-                total=total_invoices,
-                extra=str(e),
-            )
-            log_print(f"[SAFIX][ERROR] key='{key}': {e}", level="error")
-            try:
-                automator.refocus_main()
-                automator.wait(1.0)
-            except Exception:
-                pass
-            continue
-
-    overlay.update(
-        etapa="AIVO: Finalizado",
-        current=total_invoices,
-        total=total_invoices,
-        extra=f"OK={ok} FAIL={fail}",
-    )
-    log_print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail}")
-
-
+# =========================
+# Runner principal con Excel
+# =========================
 def run_safix_with_excel(
     excel_path: Path,
     aggregated_json_path: Optional[Path] = None,
     tracker=None,
 ) -> None:
+    """
+    Procesa TODAS las facturas del agregado, y por cada una intenta resolver
+    interface/centro_costos por placa desde Excel.
+
+    Regla DOBLE CC:
+      Si la placa en Excel tiene DOBLE CC = "X", NO se procesa en SAFIX y se marca en tracker como:
+        status = "PENDIENTE POR DOBLE CC"
+    """
     from datetime import datetime
 
     overlay = StatusOverlay(width=340, height=165)
@@ -566,12 +536,12 @@ def run_safix_with_excel(
         cfg = replace(cfg, invoices_by_id_path=aggregated_json_path)
 
     plate_catalog = load_plate_catalog_from_excel(excel_path)
-    log_print(f"[SAFIX] catálogo placas cargado: {len(plate_catalog)} desde {excel_path.resolve()}")
+    _log_print(f"[SAFIX] catálogo placas cargado: {len(plate_catalog)} desde {excel_path.resolve()}")
 
     invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
     if not invoices_by_id:
         overlay.update(etapa="AIVO: RENTAN", extra="No hay facturas. No se ejecuta.")
-        log_print("[SAFIX] No hay facturas. No se ejecuta.")
+        _log_print("[SAFIX] No hay facturas. No se ejecuta.", level="warning")
         return
 
     items = list(invoices_by_id.items())
@@ -588,8 +558,8 @@ def run_safix_with_excel(
 
     automator = SafixAutomator(cfg)
 
-    log_print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
-    log_print(f"[SAFIX] total facturas: {total_invoices}")
+    _log_print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
+    _log_print(f"[SAFIX] total facturas: {total_invoices}")
 
     automator.bootstrap()
     automator.refocus_main()
@@ -598,6 +568,7 @@ def run_safix_with_excel(
     ok = 0
     fail = 0
     missing_plate = 0
+    pending_doble_cc = 0
 
     for idx, (key, invoice) in enumerate(items, start=1):
         doc_id = ""
@@ -611,7 +582,6 @@ def run_safix_with_excel(
         try:
             doc_id, placa, total = extract_doc_plate_and_total(
                 invoice,
-                fallback_plate=cfg.fallback_placa,
                 key_fallback_doc_id=key,
             )
 
@@ -622,8 +592,39 @@ def run_safix_with_excel(
                 centro_costos = ""
                 extra = f"placa no está en catálogo | total={total}"
             else:
-                interface = row.get("interface", "")
-                centro_costos = row.get("centro_costos", "")
+                interface = str(row.get("interface", "") or "").strip()
+                centro_costos = str(row.get("centro_costos", "") or "").strip()
+                doble_cc = bool(row.get("doble_cc", False))
+
+                if doble_cc:
+                    pending_doble_cc += 1
+                    extra = f"PENDIENTE POR DOBLE CC | total={total}"
+
+                    overlay.update(
+                        etapa="AIVO: Pendiente",
+                        document_id=doc_id,
+                        placa=placa,
+                        current=idx,
+                        total=total_invoices,
+                        extra=extra,
+                    )
+
+                    t_end = datetime.now().isoformat(timespec="seconds")
+                    if tracker is not None:
+                        tracker.add_processed(
+                            timestamp_start=t_start,
+                            timestamp_end=t_end,
+                            document_id=doc_id,
+                            placa=placa,
+                            total=int(total) if total is not None else None,
+                            key=str(key),
+                            status="PENDIENTE POR DOBLE CC",
+                            error="",
+                        )
+
+                    _log_print(f"[SAFIX] SKIP | doc_id={doc_id} | placa={placa} | motivo=pendiente por doble CC")
+                    continue
+
                 extra = f"interface={interface or '-'} | cc={centro_costos or '-'} | total={total}"
 
             overlay.update(
@@ -686,7 +687,7 @@ def run_safix_with_excel(
                     error=str(e),
                 )
 
-            log_print(f"[SAFIX][ERROR] key='{key}': {e}", level="error")
+            _log_print(f"[SAFIX][ERROR] key='{key}' doc_id='{doc_id}' placa='{placa}' err={e}", level="error")
             try:
                 automator.refocus_main()
                 automator.wait(1.0)
@@ -700,7 +701,7 @@ def run_safix_with_excel(
         placa="",
         current=total_invoices,
         total=total_invoices,
-        extra=f"OK={ok} FAIL={fail} missing_plate={missing_plate}",
+        extra=f"OK={ok} FAIL={fail} missing_plate={missing_plate} pendiente_doble_cc={pending_doble_cc}",
     )
 
-    log_print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail} missing_plate={missing_plate}")
+    _log_print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail} missing_plate={missing_plate} pendiente_doble_cc={pending_doble_cc}")
