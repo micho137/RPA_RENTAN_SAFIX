@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-import win32com.client
 from datetime import datetime, timedelta
+from typing import Iterable, Iterator, Tuple, Optional
+
+import win32com.client
 from dateutil.tz import tzlocal
-from typing import Iterable, Iterator, Tuple, List, Optional
-
-
-MAILITEM_CLASS = 43  # Outlook.MailItem
 
 
 class OutlookClient:
@@ -28,114 +26,90 @@ class OutlookClient:
         return folder
 
     # ------------------------------
-    # Iteración segura (snapshot)
+    # Iteración estable (SIN Restrict)
     # ------------------------------
     def _build_items_snapshot(
         self,
         folder,
         days_back: int = 0,
         only_unread: bool = False,
-        limit: int = 10000,
-    ) -> List[Tuple[str, str]]:
+        hard_limit: int = 5000,
+    ) -> list[Tuple[str, str]]:
         """
         Devuelve lista estable de (EntryID, StoreID) en el orden actual.
 
-        Cambio clave:
-        - NO usamos items.Item(i) porque Outlook COM falla de forma intermitente,
-          especialmente con colecciones pequeñas (1 item) o Restrict().
-        - Usamos GetFirst()/GetNext() que es la forma robusta de iterar.
+        Importante:
+        - Evitamos Restrict() porque es frágil (locale/format) y puede devolver 0 items
+          incluso cuando sí hay correos (caso típico: solo 1 correo en el rango).
+        - En su lugar, iteramos GetFirst/GetNext y filtramos en Python.
         """
+
         items = folder.Items
-        # Ordenar por fecha descendente (más reciente primero)
         try:
-            items.Sort("[ReceivedTime]", True)
+            items.Sort("[ReceivedTime]", True)  # desc
         except Exception:
+            # si falla el sort, igual intentamos iterar
             pass
 
-        # Aplicar filtros si corresponde
-        if days_back > 0 or only_unread:
-            items = self._restrict_items(items, days_back=days_back, only_unread=only_unread)
+        since_dt: Optional[datetime] = None
+        if days_back and days_back > 0:
+            since_dt = datetime.now(tzlocal()) - timedelta(days=days_back)
 
-        snap: List[Tuple[str, str]] = []
+        snap: list[Tuple[str, str]] = []
 
+        # Iteración COM segura
         try:
             it = items.GetFirst()
         except Exception:
             it = None
 
         n = 0
-        while it is not None and n < limit:
+        while it is not None:
             n += 1
+            if n > hard_limit:
+                break
+
             try:
-                # Filtrar solo MailItem real
-                if int(getattr(it, "Class", 0) or 0) != MAILITEM_CLASS:
-                    try:
+                # Filtro unread
+                if only_unread:
+                    unread = bool(getattr(it, "UnRead", False))
+                    if not unread:
                         it = items.GetNext()
-                    except Exception:
+                        continue
+
+                # Filtro fecha
+                if since_dt is not None:
+                    received = getattr(it, "ReceivedTime", None)
+                    if received is None:
+                        it = items.GetNext()
+                        continue
+
+                    # Outlook suele retornar datetime naive; lo tratamos como local.
+                    if received.tzinfo is None:
+                        received_local = received.replace(tzinfo=tzlocal())
+                    else:
+                        received_local = received
+
+                    if received_local < since_dt:
+                        # Como está ordenado DESC, al encontrar uno más viejo,
+                        # ya podemos cortar (optimiza mucho).
                         break
-                    continue
 
                 entry_id = str(getattr(it, "EntryID", "") or "")
                 store_id = str(getattr(it, "StoreID", "") or "")
                 if entry_id and store_id:
                     snap.append((entry_id, store_id))
 
-                try:
-                    it = items.GetNext()
-                except Exception:
-                    break
-
             except Exception:
-                # Si este item falla, intentamos avanzar
-                try:
-                    it = items.GetNext()
-                except Exception:
-                    break
+                # saltar items dañados/no MailItem
+                pass
+
+            try:
+                it = items.GetNext()
+            except Exception:
+                it = None
 
         return snap
-
-    def _restrict_items(self, items, days_back: int, only_unread: bool):
-        """
-        Restrict robusto usando @SQL (DASL).
-        Esto evita problemas de formato regional con ReceivedTime.
-        """
-        clauses = []
-
-        if days_back > 0:
-            since = (datetime.now(tzlocal()) - timedelta(days=days_back))
-            # Formato recomendado para DASL: YYYY-MM-DD HH:MM
-            since_str = since.strftime("%Y-%m-%d %H:%M")
-            # datereceived
-            clauses.append(f"\"urn:schemas:httpmail:datereceived\" >= '{since_str}'")
-
-        if only_unread:
-            # read = 0 => no leído
-            clauses.append("\"urn:schemas:httpmail:read\" = 0")
-
-        if not clauses:
-            return items
-
-        sql = "@SQL=" + " AND ".join(clauses)
-
-        try:
-            return items.Restrict(sql)
-        except Exception:
-            # Fallback a Restrict clásico (menos robusto)
-            filters = []
-            if days_back > 0:
-                since = (datetime.now(tzlocal()) - timedelta(days=days_back))
-                since_str = since.strftime("%m/%d/%Y %I:%M %p")
-                filters.append(f"[ReceivedTime] >= '{since_str}'")
-            if only_unread:
-                filters.append("[UnRead] = True")
-
-            if filters:
-                try:
-                    return items.Restrict(" AND ".join(filters))
-                except Exception:
-                    return items
-
-        return items
 
     def iter_items(self, folder, days_back: int = 0, only_unread: bool = False) -> Iterator:
         """
