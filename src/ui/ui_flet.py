@@ -15,6 +15,12 @@ EXPECTED_HEADERS = ["N° VEHICULO", "PLACA", "UBICACIÓN", "CENTRO DE COSTOS", "
 
 
 def main(page: ft.Page):
+    from src.config import settings
+    from src.core.logging_config import init_logging, redirect_std_streams
+
+    logger = init_logging(settings.log_dir)
+    redirect_std_streams(logger)
+
     # ===============================
     # CONFIGURACIÓN DE VENTANA
     # ===============================
@@ -253,7 +259,6 @@ def main(page: ft.Page):
     # ===============================
     only_unread_cb = ft.Checkbox(label="Solo no leídos", value=False)
     mark_as_read_cb = ft.Checkbox(label="Marcar como leídos", value=False)
-    move_to_processed_cb = ft.Checkbox(label="Mover a procesados", value=False)
 
     status = ft.Text(value="", color=ft.Colors.RED_700)
 
@@ -303,7 +308,6 @@ def main(page: ft.Page):
 
     only_unread_cb.on_change = refresh
     mark_as_read_cb.on_change = refresh
-    move_to_processed_cb.on_change = refresh
 
     # ===============================
     # EJECUCIÓN PIPELINE + SAFIX
@@ -316,19 +320,17 @@ def main(page: ft.Page):
             days_back = max(0, (selected_end - selected_start).days)
             only_unread = bool(only_unread_cb.value)
             mark_as_read = bool(mark_as_read_cb.value)
-            move_to_processed = bool(move_to_processed_cb.value)
 
             run_pipeline(
-                output_dir=Path("./output"),
+                output_dir=None,
                 lang="spa",
                 dpi=300,
-                aggregate_by_id=True,
+                aggregate_by_id=False,
                 excel_path=Path(excel_path_str),
                 run_safix=True,
                 only_unread=only_unread,
                 days_back=days_back,
                 mark_as_read=mark_as_read,
-                move_to_processed=move_to_processed,
             )
 
             set_status("Proceso finalizado correctamente. Pipeline + SAFIX ejecutados.")
@@ -420,7 +422,6 @@ def main(page: ft.Page):
                             ft.Divider(),
                             only_unread_cb,
                             mark_as_read_cb,
-                            move_to_processed_cb,
                         ],
                     ),
                     padding=16,

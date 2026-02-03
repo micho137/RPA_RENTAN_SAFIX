@@ -1,215 +1,144 @@
-# Outlook Automation Bot (COM-based)
+# RPA Outlook + SAFIX (COM-based)
 
-Automatiza Microsoft Outlook (versión de escritorio para Windows) mediante la interfaz COM (Component Object Model) usando la librería pywin32.
-Permite listar correos, descargar adjuntos, marcar mensajes como leídos y moverlos a carpetas específicas, todo configurable desde variables de entorno.
+Automatiza Microsoft Outlook Desktop (Windows) vía COM con pywin32, procesa facturas (XML/PDF/OCR), consolida por `document_id` y carga en SAFIX/XENCO mediante automatización visual.
 
-Ideal para procesos corporativos donde Outlook es la herramienta principal de correo y se desea extraer o procesar información de manera automática sin depender de interfaces web o Selenium.
+Incluye UI en Flet para ejecutar el pipeline completo y logs en Excel en tiempo real.
 
-## Características principales
-
+**Características principales**
 - Acceso directo a Outlook Desktop usando COM (pywin32)
-- Descarga controlada de adjuntos desde carpetas específicas
-- Filtros por:
-  - Correos no leídos
-  - Rango de fechas
+- Descarga controlada de adjuntos con filtros por fecha y no leídos
 - Extracción automática de ZIPs
 - Procesamiento de XML y PDF (OCR cuando aplica)
-- Consolidación por factura (document_id)
+- Consolidación por factura (`document_id`)
 - Automatización visual de SAFIX (PyAutoGUI + PyWinAuto)
-- Overlay de estado en tiempo real (documento, placa, progreso y tiempo)
-- Limpieza automática de archivos temporales
-- Logs rotativos detallados
-- Configuración centralizada mediante .env
-- Interfaz gráfica de usuario (Flet)
-- Empaquetable como ejecutable (.exe)
+- Overlay de estado en tiempo real
+- Logs Excel en tiempo real de procesadas y placas no encontradas
+- Captura de pantalla automática en errores (opcional)
+- Configuración centralizada mediante `.env`
+- Interfaz gráfica (Flet)
 
-## Estructura del proyecto
-
+**Estructura del proyecto**
 ```
 .
 ├─ src/
-│ ├─ config.py
-│ ├─ core/
-│ │ ├─ com_init.py
-│ │ └─ logging_config.py
-│ ├─ outlook/
-│ │ ├─ client.py
-│ │ ├─ models.py
-│ │ └─ service.py
-│ ├─ processing/
-│ │ ├─ zip_invoice_extractor.py
-│ │ └─ aggregate_json.py
-│ ├─ workflows/
-│ │ ├─ download_attachments.py
-│ │ ├─ invoice_pipeline.py
-│ │ └─ safix_automation.py
-│ └─ ui/
-│ ├─ ui_flet.py
-│ └─ overlay_status.py
-├─ assets/
-├─ logs/
+│  ├─ config.py
+│  ├─ assets/
+│  ├─ core/
+│  ├─ outlook/
+│  ├─ processing/
+│  ├─ workflows/
+│  └─ ui/
 ├─ output/
-├─ .env.example
+├─ logs/
+├─ main.py
+├─ .env
 ├─ README.md
 └─ requirements.txt
 ```
 
-## Requerimientos
-
-### Sistema operativo
-- Windows 10 / 11
+**Requerimientos**
+- Windows 10/11
 - Outlook Desktop instalado y con sesión iniciada
-
-### Software requerido
-- Microsoft Outlook Desktop (sesión iniciada)
-- SAFIX / XENCO instalado
-- Acceso al archivo .jnlp de SAFIX
-
-### Entorno Python
-- Python 3.9 o superior
+- SAFIX/XENCO instalado
+- Acceso al archivo `.jnlp` de SAFIX
+- Python 3.9+
 - Coincidencia de arquitectura (x64/x86) entre Python y Outlook
 
-### Dependencias
-```
+**Instalación**
+```bash
 pip install -r requirements.txt
 ```
 
-Contenido de requirements.txt:
-```
-pywin32>=306
-python-dateutil>=2.9.0
-python-dotenv>=1.0.1
-pytest>=8.2.0
+**Ejecución**
+```bash
+python main.py
 ```
 
-## Configuración inicial (.env)
-
-Ejemplo de archivo .env:
-
-```
-OUTLOOK_ACCOUNT=CORREO
-OUTLOOK_FOLDER=NOMBRE_DE_CARPETA_EN_CORREO
-DOWNLOAD_DIR=./downloads
-ONLY_UNREAD=false
-DAYS_BACK=30
-MARK_AS_READ=true
-MOVE_TO_PROCESSED=false
-PROCESSED_FOLDER=Procesados
-LOG_DIR=./logs
-```
-
-Todos los valores son opcionales. Si no se especifican, el código usa los valores predeterminados mostrados arriba.
-
-## Cómo funciona
-
-### 1. Inicialización COM
-- Se crea un contexto seguro (CoInitialize/CoUninitialize) con el helper com_initialized().
-- Se lanza Outlook internamente (si no está abierto) y se accede al namespace MAPI.
-
-### 2. Cliente Outlook
-- OutlookClient es una capa delgada sobre los objetos COM reales de Outlook:
-  - find_store_by_display() encuentra el buzón (store).
-  - get_folder() abre carpetas anidadas.
-  - iter_items() recorre mensajes con filtros (days_back, unread).
-  - attachments() devuelve los objetos Attachment.
-
-### 3. Servicio Outlook
-- OutlookService combina el cliente con la lógica de negocio:
-  - Guarda adjuntos en carpetas organizadas por fecha.
-  - Evita duplicados (usa SHA-256 para diferenciar archivos).
-  - Marca como leído el correo procesado.
-  - Mueve los correos si MOVE_TO_PROCESSED=true.
-
-### 4. Logging
-- Configurado por logging_config.py con:
-  - Consola y archivo rotativo (logs/outlook_bot.log).
-  - Formato:  
-    2025-10-20 10:32:15 | INFO | outlook_bot | Processing 'Factura 2025...'
-
-### 5. Workflow
-- src/workflows/download_attachments.py ejecuta el flujo completo:
-  1. Carga configuración del .env.
-  2. Inicializa COM.
-  3. Abre la carpeta definida (ej. FLYPASS).
-  4. Descarga todos los adjuntos de los correos filtrados.
-  5. Registra los resultados y finaliza.
-
-## Ejecución
-
-Ejecuta el comando principal:
-
-```
+También funciona:
+```bash
 python -m src.ui.ui_flet
 ```
 
-## Pruebas
+**Flujo general**
+1. Descargar adjuntos desde Outlook (ZIP).
+2. Extraer ZIPs.
+3. Procesar XML/PDF y generar JSON por factura.
+4. Automatizar carga en SAFIX usando el Excel de placas.
+6. Registrar logs en Excel y limpiar archivos temporales.
 
-Puedes ejecutar las pruebas unitarias sin Outlook real (mockeadas):
+**Archivos de salida**
+- JSONs: `output/json/`
+- Agregado: no se genera (se usan JSON individuales).
+- PDF/XML: `output/extract/`
+- Logs: `output/logs/procesadas.xlsx`
+- Placas no encontradas: `output/logs/placas_no_encontradas.xlsx`
+- Errores (screenshots): `output/errors/`
 
+**Configuración (.env)**
+Ejemplo base:
+```env
+OUTLOOK_ACCOUNT=CORREO
+OUTLOOK_FOLDER=NOMBRE_DE_CARPETA_EN_CORREO
+DOWNLOAD_DIR=./downloads
+LOG_DIR=./src/logs
+OUTPUT_DIR=./output
+
+SAFIX_SHORTCUT=C:/ruta/a/safix.jnlp
+SAFIX_WINDOW_TITLE=.*XENCO - Administracion del Sistema.*
+SAFIX_USER=usuario
+SAFIX_PASS=clave
+SAFIX_NIT=123456789
+SAFIX_XOT_CODE=XOT05
+SAFIX_GOT_CODE=GOT
+SAFIX_CCAMPO_84=84
+SAFIX_CAMPO_05=05
+SAFIX_OBL_CODE=OBL_EXCLU
+SAFIX_OBL2_CODE=OBL_ANTCON
+SAFIX_TESORERIA_ICON=src/assets/tesoreria.png
+SAFIX_VALORES_ICON=src/assets/valores.png
+SAFIX_Z_ICON=src/assets/Z.png
+SAFIX_ENGRANES_ICON=src/assets/engranes.png
 ```
+
+**Logs unificados**
+- Todo lo que se imprime en consola se guarda en un único archivo por fecha:
+  `src/logs/app_YYYY-MM-DD.log`
+
+**Output con fecha**
+- Cada ejecución genera una carpeta con timestamp:
+  `output/YYYY-MM-DD_HHMMSS/`
+
+Opciones de robustez SAFIX:
+```env
+SAFIX_STOP_ON_ERROR=true
+SAFIX_SOFT_RESET_EVERY=25
+SAFIX_LOG_EVERY=1
+SAFIX_BREATH_SEC=0.4
+SAFIX_ERROR_DIR=./output/errors
+SAFIX_PREFLIGHT_ICONS=false
+SAFIX_SCREENSHOT_ON_ERROR=true
+```
+
+**Notas de uso**
+- La UI permite seleccionar rango de fechas, solo no leídos y marcar como leídos.
+- El Excel debe llamarse exactamente `Centros de Costos Vehiculos.xlsx`.
+- Cabeceras requeridas: `N° VEHICULO | PLACA | UBICACIÓN | CENTRO DE COSTOS | INTERFACE`
+
+**Pruebas**
+```bash
 pytest -q
 ```
 
-Qué validan:
-- La estructura de OutlookClient.
-- El flujo completo de descarga (OutlookService.save_attachments) usando mails simulados.
-- La creación de archivos y conteo correcto de adjuntos.
+**Seguridad**
+- No se almacenan credenciales en el código.
+- Outlook COM accede al perfil del usuario autenticado.
 
-## Estructura de logs
-
-Ubicación por defecto: ./logs/outlook_bot.log
-
-Ejemplo de registro:
-```
-2025-10-20 09:55:32 | INFO | outlook_bot | Using store: "CORREO" | folder: "NOMBRE_DE_CARPETA_EN_CORREO"
-2025-10-20 09:55:32 | INFO | outlook_bot | Processing: 'Factura Electrónica 2025-10-18'
-2025-10-20 09:55:33 | INFO | outlook_bot | Processed=1 | Saved=2
-```
-
-Los logs rotan automáticamente cuando superan 2 MB (con 5 backups).
-
-## Extensiones posibles
-
-- Listar carpetas disponibles
-  python main.py --folders
-- Listar correos
-  python main.py --list
-- Integración con Pywinauto
-  Añadir un módulo src/apps/<nombre_app> para interactuar con otra aplicación de escritorio.
-- Integración con bases de datos
-  Guardar los metadatos (asunto, remitente, hash del adjunto) en PostgreSQL o SQLite.
-- Tareas programadas
-  Ejecutar python main.py --download cada hora mediante el Programador de tareas de Windows.
-
-## Seguridad
-
-- El script no almacena contraseñas ni credenciales.
-- Outlook COM accede directamente al perfil del usuario logueado.
-- Si Outlook muestra un prompt de seguridad, ajusta:
-  Archivo → Opciones → Centro de confianza → Seguridad del programa.
-
-## Limitaciones
-
-- Solo funciona en Windows con Outlook Desktop (no Outlook Web).
+**Limitaciones**
+- Solo Windows con Outlook Desktop.
 - Requiere sesión activa en Outlook.
-- No se ejecuta como servicio en segundo plano sin usuario logueado.
-- Las carpetas deben coincidir con el idioma de Outlook.
+- No funciona como servicio sin usuario logueado.
 
-## Cómo trabaja internamente
-
-1. COM Client (Outlook.Application)
-   Pywin32 solicita a Windows el objeto registrado bajo Outlook.Application → Windows carga OUTLOOK.EXE si no está en ejecución.
-2. Namespace MAPI
-   GetNamespace("MAPI") expone todos los buzones y carpetas (Stores y Folders).
-3. Recorrido y descarga
-   El script accede a la carpeta configurada, recorre folder.Items, filtra por fecha y estado, y guarda los adjuntos mediante attachment.SaveAsFile(path).
-4. Gestión de COM
-   El contexto com_initialized() garantiza CoInitialize y CoUninitialize por hilo.
-5. Logs
-   Todos los pasos se registran con timestamp, nivel y módulo.
-
-## Contacto y mantenimiento
-
+**Contacto y mantenimiento**
 Autor: Michaen Stebin Rangel Giraldo  
 Rol: Arquitecto de Soluciones/Software/RPA  
-Proyecto: Automatización Outlook – Inter-Telco S.A.S
+Proyecto: Rentan E.I.C.E – Inter-Telco S.A.S

@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+from datetime import datetime
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -14,6 +15,14 @@ from pywinauto import Application, Desktop
 
 from src.config import settings
 from src.ui.overlay_status import StatusOverlay
+
+# Mensaje simple cuando no hay facturas
+try:
+    import tkinter as _tk
+    from tkinter import messagebox as _messagebox
+except Exception:  # pragma: no cover
+    _tk = None
+    _messagebox = None
 
 
 
@@ -48,6 +57,77 @@ def load_invoices_by_id(path: Path) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("El archivo all_invoices_by_id.json no es un dict.")
     return data
+
+
+def load_invoices_from_json_dir(json_root: Path) -> Dict[str, Any]:
+    """
+    Carga todos los JSON individuales en un dict {key: data},
+    donde key es el nombre del archivo (stem).
+    """
+    json_root = Path(json_root)
+    if not json_root.exists():
+        raise FileNotFoundError(f"No existe el directorio JSON: {json_root}")
+
+    out: Dict[str, Any] = {}
+    for p in sorted(json_root.rglob("*.json")):
+        if not p.is_file():
+            continue
+        if p.name in {"all_invoices_by_id.json", "all_invoices.json"}:
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if isinstance(data, dict):
+            out[p.stem] = data
+    return out
+
+
+def load_processed_ids_from_log(xlsx_path: Path) -> set[str]:
+    """
+    Lee procesadas.xlsx y retorna set de document_id con status OK.
+    """
+    if not xlsx_path.exists():
+        return set()
+
+    try:
+        wb = load_workbook(filename=str(xlsx_path), read_only=True, data_only=True)
+        ws = wb.active
+        rows = ws.iter_rows(values_only=True)
+        header = next(rows, None)
+        if not header:
+            return set()
+
+        header_map = {str(h).strip().lower(): idx for idx, h in enumerate(header) if h is not None}
+        doc_idx = header_map.get("document_id")
+        status_idx = header_map.get("status")
+
+        if doc_idx is None:
+            return set()
+
+        processed = set()
+        for row in rows:
+            if not row:
+                continue
+            doc = row[doc_idx] if doc_idx < len(row) else None
+            status = row[status_idx] if status_idx is not None and status_idx < len(row) else None
+            if doc and (status is None or str(status).strip().upper() == "OK"):
+                processed.add(str(doc).strip())
+        return processed
+    except Exception:
+        return set()
+
+
+def _show_no_invoices_message():
+    if _tk is None or _messagebox is None:
+        return
+    try:
+        root = _tk.Tk()
+        root.withdraw()
+        _messagebox.showinfo("RENTAN", "No hay facturas para procesar.")
+        root.destroy()
+    except Exception:
+        pass
 
 
 def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]:
@@ -190,6 +270,15 @@ class SafixConfig:
     invoices_by_id_path: Path
     fallback_placa: str
 
+    # Robustez / mitigaciones
+    stop_on_error: bool
+    soft_reset_every: int
+    log_every: int
+    breath_sec: float
+    error_dir: Path
+    preflight_icons: bool
+    screenshot_on_error: bool
+
     @staticmethod
     def from_settings() -> "SafixConfig":
         title_re = _strip_quotes(getattr(settings, "safix_window_title", ""))
@@ -225,6 +314,13 @@ class SafixConfig:
             wait_popup=float(getattr(settings, "safix_wait_popup", 1.6) or 1.6),
             invoices_by_id_path=_p("invoices_by_id_path"),
             fallback_placa=str(getattr(settings, "safix_placa", "") or "").strip(),
+            stop_on_error=bool(getattr(settings, "safix_stop_on_error", False)),
+            soft_reset_every=int(getattr(settings, "safix_soft_reset_every", 0) or 0),
+            log_every=int(getattr(settings, "safix_log_every", 1) or 1),
+            breath_sec=float(getattr(settings, "safix_breath_sec", 0.4) or 0.4),
+            error_dir=Path(getattr(settings, "safix_error_dir", "./output/errors")).resolve(),
+            preflight_icons=bool(getattr(settings, "safix_preflight_icons", False)),
+            screenshot_on_error=bool(getattr(settings, "safix_screenshot_on_error", True)),
         )
 
 
@@ -238,6 +334,8 @@ class SafixAutomator:
 
         pyautogui.FAILSAFE = True
         pyautogui.PAUSE = self.cfg.pyauto_pause
+
+        self.cfg.error_dir.mkdir(parents=True, exist_ok=True)
 
     # ---------- Ventanas ----------
     def _wait_for_window_win32(
@@ -260,6 +358,20 @@ class SafixAutomator:
             if time.time() - start > timeout:
                 raise TimeoutError(f"No apareció ventana con título que matchee: {title_re}")
             time.sleep(interval)
+
+    def validate_icon_files(self):
+        missing = []
+        for p in [
+            self.cfg.tesoreria_icon,
+            self.cfg.valores_icon,
+            self.cfg.z_icon,
+            self.cfg.engranes_icon,
+        ]:
+            if not Path(p).exists():
+                missing.append(str(p))
+
+        if missing:
+            raise FileNotFoundError(f"Faltan iconos SAFIX: {missing}")
 
     def launch_and_focus_main(self):
         if not self.cfg.jnlp_path.exists():
@@ -314,6 +426,22 @@ class SafixAutomator:
         self.wait(0.2)
         pyautogui.write(str(text), interval=max(self.cfg.write_interval, slow_min_interval))
         self.wait(0.6)
+
+    def capture_error_snapshot(self, *, document_id: str = "", placa: str = "", stage: str = "") -> Optional[Path]:
+        if not self.cfg.screenshot_on_error:
+            return None
+
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        doc = re.sub(r"[^\w\-]+", "_", document_id or "no_doc")[:50]
+        plc = re.sub(r"[^\w\-]+", "_", placa or "no_placa")[:20]
+        stg = re.sub(r"[^\w\-]+", "_", stage or "error")[:30]
+        name = f"safix_error_{ts}_{doc}_{plc}_{stg}.png"
+        out = self.cfg.error_dir / name
+        try:
+            pyautogui.screenshot(str(out))
+            return out
+        except Exception:
+            return None
 
     def press_enter(self, n: int = 1, wait_each: Optional[float] = None):
         for _ in range(max(1, n)):
@@ -491,6 +619,9 @@ class SafixAutomator:
 
     # ---------- Bootstrap ----------
     def bootstrap(self):
+        if self.cfg.preflight_icons:
+            self.validate_icon_files()
+
         self.launch_and_focus_main()
         time.sleep(self.cfg.form_ready_wait)
 
@@ -510,6 +641,21 @@ class SafixAutomator:
         self.alt_p_o_g()
         self.wait(self.cfg.wait_long)
 
+    def soft_reset(self):
+        """
+        Reset suave para recuperar contexto cuando se degrada la UI.
+        """
+        try:
+            self.refocus_main()
+            self.wait(0.6)
+            self.click_tesoreria()
+            self.wait(self.cfg.wait_long * 2)
+            self.alt_p_o_g()
+            self.wait(self.cfg.wait_long)
+        except Exception:
+            # si falla, no bloquea el flujo principal
+            pass
+
 
 # =========================
 # Runners (BATCH)
@@ -520,6 +666,7 @@ def run_safix_from_aggregated_json() -> None:
     invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
     if not invoices_by_id:
         print("[SAFIX] No hay facturas. No se ejecuta.")
+        _show_no_invoices_message()
         return
 
     items = list(invoices_by_id.items())
@@ -583,13 +730,28 @@ def run_safix_from_aggregated_json() -> None:
                 total=total_invoices,
                 extra=str(e),
             )
+            snap = automator.capture_error_snapshot(
+                document_id=doc_id,
+                placa=placa,
+                stage="exception",
+            )
+            if snap:
+                print(f"[SAFIX][ERROR] snapshot: {snap}")
             print(f"[SAFIX][ERROR] key='{key}': {e}")
             try:
                 automator.refocus_main()
                 automator.wait(1.0)
             except Exception:
                 pass
+            if cfg.stop_on_error:
+                break
             continue
+
+        if cfg.soft_reset_every > 0 and (idx % cfg.soft_reset_every == 0):
+            automator.soft_reset()
+
+        if cfg.breath_sec > 0:
+            time.sleep(cfg.breath_sec)
 
     overlay.update(
         etapa="AIVO: Finalizado",
@@ -597,6 +759,7 @@ def run_safix_from_aggregated_json() -> None:
         total=total_invoices,
         extra=f"OK={ok} FAIL={fail}",
     )
+    overlay.stop_timer()
     print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail}")
 
 
@@ -605,6 +768,7 @@ def run_safix_from_aggregated_json() -> None:
 def run_safix_with_excel(
     excel_path: Path,
     aggregated_json_path: Optional[Path] = None,
+    json_root: Optional[Path] = None,
     tracker=None,
 ) -> None:
     """
@@ -620,11 +784,6 @@ def run_safix_with_excel(
     """
     from datetime import datetime
 
-    # Overlay (si lo quieres en esta función)
-    overlay = StatusOverlay(width=340, height=165)
-    overlay.start()
-    overlay.update(etapa="AIVO: RENTAN", extra="Abriendo SAFIX y preparando sesión…")
-
     cfg = SafixConfig.from_settings()
     if aggregated_json_path is not None:
         cfg = replace(cfg, invoices_by_id_path=aggregated_json_path)
@@ -632,13 +791,38 @@ def run_safix_with_excel(
     plate_catalog = load_plate_catalog_from_excel(excel_path)
     print(f"[SAFIX] catálogo placas cargado: {len(plate_catalog)} desde {excel_path.resolve()}")
 
-    invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
+    if json_root is not None:
+        invoices_by_id = load_invoices_from_json_dir(json_root)
+    else:
+        invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
     if not invoices_by_id:
-        overlay.update(etapa="AIVO: RENTAN", extra="No hay facturas. No se ejecuta.")
         print("[SAFIX] No hay facturas. No se ejecuta.")
+        _show_no_invoices_message()
         return
 
-    items = list(invoices_by_id.items())
+    # Overlay (si lo quieres en esta función)
+    overlay = StatusOverlay(width=340, height=165)
+    overlay.start()
+    overlay.update(etapa="AIVO: RENTAN", extra="Abriendo SAFIX y preparando sesión…")
+
+    # ✅ Deduplicar por document_id
+    deduped: Dict[str, Any] = {}
+    for key, inv in invoices_by_id.items():
+        doc = ((inv.get("document") or {}).get("document_id")) if isinstance(inv, dict) else None
+        doc = str(doc or "").strip() or str(key)
+        if doc:
+            deduped[doc] = inv
+    items = list(deduped.items())
+
+    # ✅ Saltar procesadas (si existe procesadas.xlsx)
+    processed_ids = set()
+    if tracker is not None:
+        processed_ids = load_processed_ids_from_log(tracker.logs_dir / "procesadas.xlsx")
+    elif json_root is not None:
+        processed_ids = load_processed_ids_from_log(Path(settings.output_dir) / "logs" / "procesadas.xlsx")
+
+    if processed_ids:
+        items = [(k, v) for (k, v) in items if str(k).strip() not in processed_ids]
     total_invoices = len(items)
 
     # Inicia contador global desde que aparece overlay:
@@ -686,6 +870,15 @@ def run_safix_with_excel(
                 interface = ""
                 centro_costos = ""
                 extra = f"placa no está en catálogo | total={total}"
+                if tracker is not None:
+                    miss_row = tracker.add_missing_plate(
+                        document_id=doc_id,
+                        placa=placa,
+                        total=int(total) if total is not None else None,
+                        key=str(key),
+                        error="placa no está en catálogo",
+                    )
+                    tracker.append_missing_plate_row(miss_row)
             else:
                 interface = row.get("interface", "")
                 centro_costos = row.get("centro_costos", "")
@@ -714,7 +907,7 @@ def run_safix_with_excel(
 
             t_end = datetime.now().isoformat(timespec="seconds")
             if tracker is not None:
-                tracker.add_processed(
+                row = tracker.add_processed(
                     timestamp_start=t_start,
                     timestamp_end=t_end,
                     document_id=doc_id,
@@ -724,6 +917,8 @@ def run_safix_with_excel(
                     status="OK",
                     error="",
                 )
+                if cfg.log_every <= 1 or (idx % cfg.log_every == 0):
+                    tracker.append_processed_row(row)
 
             ok += 1
 
@@ -742,7 +937,7 @@ def run_safix_with_excel(
             )
 
             if tracker is not None:
-                tracker.add_processed(
+                row = tracker.add_processed(
                     timestamp_start=t_start,
                     timestamp_end=t_end,
                     document_id=doc_id,
@@ -752,6 +947,16 @@ def run_safix_with_excel(
                     status="FAIL",
                     error=str(e),
                 )
+                if cfg.log_every <= 1 or (idx % cfg.log_every == 0):
+                    tracker.append_processed_row(row)
+
+            snap = automator.capture_error_snapshot(
+                document_id=doc_id,
+                placa=placa,
+                stage="exception",
+            )
+            if snap:
+                print(f"[SAFIX][ERROR] snapshot: {snap}")
 
             print(f"[SAFIX][ERROR] key='{key}': {e}")
             try:
@@ -759,7 +964,15 @@ def run_safix_with_excel(
                 automator.wait(1.0)
             except Exception:
                 pass
+            if cfg.stop_on_error:
+                break
             continue
+
+        if cfg.soft_reset_every > 0 and (idx % cfg.soft_reset_every == 0):
+            automator.soft_reset()
+
+        if cfg.breath_sec > 0:
+            time.sleep(cfg.breath_sec)
 
     overlay.update(
         etapa="AIVO: Finalizado",
@@ -769,6 +982,7 @@ def run_safix_with_excel(
         total=total_invoices,
         extra=f"OK={ok} FAIL={fail} missing_plate={missing_plate}",
     )
+    overlay.stop_timer()
 
     print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail} missing_plate={missing_plate}")
     # overlay.stop()  # si quieres cerrarlo automáticamente

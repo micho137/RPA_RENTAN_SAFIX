@@ -69,18 +69,27 @@ class StatusOverlay:
         self._lbl_extra: Optional[tk.Label] = None
 
         self._t0 = 0.0
+        self._timer_running = True
+        self._elapsed_fixed = 0.0
         self._last = StatusPayload(etapa="Procesando…", document_id="", placa="", current=0, total=0, extra="")
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
             return
         self._t0 = time.perf_counter()
+        self._timer_running = True
+        self._elapsed_fixed = 0.0
         self._thread = threading.Thread(target=self._run_tk, name="StatusOverlayThread", daemon=True)
         self._thread.start()
         self._started.wait(timeout=2.0)
 
     def stop(self) -> None:
         self._q.put(None)
+
+    def stop_timer(self) -> None:
+        if self._timer_running and self._t0:
+            self._elapsed_fixed = time.perf_counter() - self._t0
+        self._timer_running = False
 
     def update(
         self,
@@ -184,9 +193,9 @@ class StatusOverlay:
         if self._lbl_stage:
             self._lbl_stage.config(text=p.etapa or "Procesando…")
         if self._lbl_doc:
-            self._lbl_doc.config(text=f"document_id: {p.document_id or '-'}")
+            self._lbl_doc.config(text=f"Factura: {p.document_id or '-'}")
         if self._lbl_plate:
-            self._lbl_plate.config(text=f"placa: {p.placa or '-'}")
+            self._lbl_plate.config(text=f"Placa: {p.placa or '-'}")
         if self._lbl_extra:
             self._lbl_extra.config(text=p.extra or "")
         self._apply_meta(p)
@@ -195,6 +204,9 @@ class StatusOverlay:
         if not self._lbl_meta:
             return
         prog = f"{p.current}/{p.total}" if p.total else "-"
-        elapsed = (time.perf_counter() - self._t0) if self._t0 else 0.0
+        if self._timer_running:
+            elapsed = (time.perf_counter() - self._t0) if self._t0 else 0.0
+        else:
+            elapsed = self._elapsed_fixed
         t = _fmt_hhmmss(elapsed)
-        self._lbl_meta.config(text=f"progreso: {prog} | tiempo: {t}")
+        self._lbl_meta.config(text=f"Progreso: {prog} | Tiempo: {t}")

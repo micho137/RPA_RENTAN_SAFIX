@@ -36,9 +36,11 @@ class OutlookClient:
         if filters:
             items = items.Restrict(" AND ".join(filters))
 
-        # Colección MAPI es 1-based
-        for i in range(1, items.Count + 1):
-            yield items.Item(i)
+        # Colección MAPI es 1-based. Hacemos snapshot para evitar
+        # "index out of range" cuando se marca como leído y cambia el filtro.
+        snapshot = [items.Item(i) for i in range(1, items.Count + 1)]
+        for item in snapshot:
+            yield item
 
     # Operaciones sobre MailItem
     @staticmethod

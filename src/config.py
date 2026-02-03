@@ -1,9 +1,20 @@
 from dataclasses import dataclass
 import os
+from datetime import datetime
 from dotenv import load_dotenv
 from pathlib import Path
 
 load_dotenv()
+
+
+def _env_bool(name: str, default: str = "false") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "y", "si", "sí"}
+
+
+def _dated_dir(base: str) -> Path:
+    base_path = Path(base).resolve()
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    return base_path / stamp
 
 
 @dataclass(frozen=True)
@@ -16,12 +27,12 @@ class Settings:
 
     download_dir: Path = Path(os.getenv("DOWNLOAD_DIR", "./downloads")).resolve()
     processed_folder: str = os.getenv("PROCESSED_FOLDER", "Procesados")
-    log_dir: Path = Path(os.getenv("LOG_DIR", "./logs")).resolve()
+    log_dir: Path = Path(os.getenv("LOG_DIR", "./src/logs")).resolve()
 
     # =========================
     # PIPELINE / OUTPUT (estático)
     # =========================
-    output_dir: Path = Path(os.getenv("OUTPUT_DIR", "./output")).resolve()
+    output_dir: Path = _dated_dir(os.getenv("OUTPUT_DIR", "./output"))
 
     extract_dir: Path = (
         Path(os.getenv("EXTRACT_DIR", "")).resolve()
@@ -88,6 +99,17 @@ class Settings:
     safix_wait_long: float = float(os.getenv("SAFIX_WAIT_LONG", "3.0"))
     safix_wait_popup: float = float(os.getenv("SAFIX_WAIT_POPUP", "4.0"))
 
+    # =========================
+    # SAFIX / ROBUSTEZ (dinámico)
+    # =========================
+    safix_stop_on_error: bool = _env_bool("SAFIX_STOP_ON_ERROR", "false")
+    safix_soft_reset_every: int = int(os.getenv("SAFIX_SOFT_RESET_EVERY", "0") or 0)
+    safix_log_every: int = int(os.getenv("SAFIX_LOG_EVERY", "1") or 1)
+    safix_breath_sec: float = float(os.getenv("SAFIX_BREATH_SEC", "0.4") or 0.4)
+    safix_error_dir: Path = Path(os.getenv("SAFIX_ERROR_DIR", "./output/errors")).resolve()
+    safix_preflight_icons: bool = _env_bool("SAFIX_PREFLIGHT_ICONS", "false")
+    safix_screenshot_on_error: bool = _env_bool("SAFIX_SCREENSHOT_ON_ERROR", "true")
+
 
 settings = Settings()
 
@@ -99,3 +121,4 @@ settings.output_dir.mkdir(parents=True, exist_ok=True)
 settings.extract_dir.mkdir(parents=True, exist_ok=True)
 settings.json_dir.mkdir(parents=True, exist_ok=True)
 settings.text_dir.mkdir(parents=True, exist_ok=True)
+settings.safix_error_dir.mkdir(parents=True, exist_ok=True)

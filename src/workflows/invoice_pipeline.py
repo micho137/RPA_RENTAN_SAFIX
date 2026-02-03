@@ -12,12 +12,12 @@ from src.core.run_tracking import RunTracker
 from src.core.cleanup import cleanup_output_dir_keep_pdf_xml
 
 
-OUTPUT_DIR = Path("./output")
+OUTPUT_DIR = settings.output_dir
 AGG_BY_ID_JSON = (OUTPUT_DIR / "json" / "all_invoices_by_id.json")
 
 
 def run_pipeline(
-    output_dir: Path = OUTPUT_DIR,
+    output_dir: Path | None = None,
     lang: str = "spa",
     dpi: int = 300,
     aggregate_by_id: bool = True,
@@ -43,7 +43,7 @@ def run_pipeline(
     - (Nuevo) Cleanup final: elimina todo excepto PDF y XML (y conserva los logs Excel)
     """
 
-    output_dir = Path(output_dir).resolve()
+    output_dir = (Path(output_dir).resolve() if output_dir else settings.output_dir)
 
     extract_dir = output_dir / "extract"
     json_dir = output_dir / "json"
@@ -124,15 +124,16 @@ def run_pipeline(
             agg_res.written_by_id,
         )
 
-        # ---------- 4) SAFIX ----------
-        if run_safix:
-            if excel_path is None:
-                raise ValueError("run_safix=True pero excel_path=None. Debes seleccionar el Excel desde Flet.")
+    # ---------- 4) SAFIX ----------
+    if run_safix:
+        if excel_path is None:
+            raise ValueError("run_safix=True pero excel_path=None. Debes seleccionar el Excel desde Flet.")
 
-            excel_path = Path(excel_path).resolve()
-            if not excel_path.exists():
-                raise FileNotFoundError(f"El Excel no existe: {excel_path}")
+        excel_path = Path(excel_path).resolve()
+        if not excel_path.exists():
+            raise FileNotFoundError(f"El Excel no existe: {excel_path}")
 
+        if aggregate_by_id:
             if not agg_by_id_json.exists():
                 raise FileNotFoundError(f"No se generó el agregado esperado: {agg_by_id_json}")
 
@@ -143,16 +144,35 @@ def run_pipeline(
                 aggregated_json_path=agg_by_id_json,
                 tracker=tracker,  # ✅ registra procesadas.xlsx
             )
+        else:
+            logger.info("Running SAFIX with Excel=%s and JSON_DIR=%s (sin agregado)", excel_path, json_dir)
+
+            run_safix_with_excel(
+                excel_path=excel_path,
+                json_root=json_dir,
+                tracker=tracker,
+            )
 
     # ✅ Guardar Excels
     paths = tracker.save()
-    logger.info("Logs generated: descargados=%s | procesadas=%s", paths["descargados"], paths["procesadas"])
+    logger.info(
+        "Logs generated: descargados=%s | procesadas=%s | placas_no_encontradas=%s",
+        paths.get("descargados"),
+        paths.get("procesadas"),
+        paths.get("placas_no_encontradas"),
+    )
 
     # ✅ Cleanup final: conservar PDFs, XMLs y los logs Excel
+    keep_paths = [p for p in (
+        paths.get("descargados"),
+        paths.get("procesadas"),
+        paths.get("placas_no_encontradas"),
+    ) if p]
+
     deleted_files, deleted_dirs = cleanup_output_dir_keep_pdf_xml(
         output_dir=output_dir,
         keep_exts=(".pdf", ".xml"),
-        keep_paths=(paths["descargados"], paths["procesadas"]),
+        keep_paths=keep_paths,
     )
     logger.info("[CLEANUP] deleted_files=%s deleted_dirs=%s", deleted_files, deleted_dirs)
 
