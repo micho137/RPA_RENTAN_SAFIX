@@ -14,6 +14,8 @@ from openpyxl import load_workbook
 from pywinauto import Application, Desktop
 
 from src.config import settings
+from src.core.com_init import com_initialized
+from src.outlook.client import OutlookClient
 from src.ui.overlay_status import StatusOverlay
 
 # Mensaje simple cuando no hay facturas
@@ -81,6 +83,33 @@ def load_invoices_from_json_dir(json_root: Path) -> Dict[str, Any]:
         if isinstance(data, dict):
             out[p.stem] = data
     return out
+
+
+def load_attachment_manifest(download_dir: Path) -> Dict[str, str]:
+    path = Path(download_dir) / "_manifest.json"
+    if not path.exists():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _zip_stem_from_source_path(source_path: str) -> Optional[str]:
+    try:
+        p = Path(source_path)
+        extract_root = settings.extract_dir
+        rel = p.relative_to(extract_root)
+        return rel.parts[0] if rel.parts else None
+    except Exception:
+        # fallback: buscar carpeta "extract" en el path
+        parts = Path(source_path).parts
+        if "extract" in parts:
+            idx = parts.index("extract")
+            if idx + 1 < len(parts):
+                return parts[idx + 1]
+        return None
 
 
 def load_processed_ids_from_log(xlsx_path: Path) -> set[str]:
@@ -771,6 +800,7 @@ def run_safix_with_excel(
     excel_path: Path,
     aggregated_json_path: Optional[Path] = None,
     json_root: Optional[Path] = None,
+    mark_as_read: bool = False,
     tracker=None,
 ) -> None:
     """
@@ -825,6 +855,22 @@ def run_safix_with_excel(
 
     if processed_ids:
         items = [(k, v) for (k, v) in items if str(k).strip() not in processed_ids]
+
+    # ✅ preparar marcado como leído (después de procesar cada factura)
+    manifest = load_attachment_manifest(settings.download_dir) if mark_as_read else {}
+    marked_entry_ids: set[str] = set()
+    outlook_client: Optional[OutlookClient] = None
+    if mark_as_read and manifest:
+        com_ctx = com_initialized()
+        com_ctx.__enter__()
+        try:
+            outlook_client = OutlookClient()
+        except Exception:
+            com_ctx.__exit__(None, None, None)
+            outlook_client = None
+            manifest = {}
+    else:
+        com_ctx = None
     total_invoices = len(items)
 
     # Inicia contador global desde que aparece overlay:
@@ -937,6 +983,17 @@ def run_safix_with_excel(
                 peaje_total=int(total),
             )
 
+            if mark_as_read and outlook_client is not None:
+                src_path = (invoice or {}).get("_source_path") if isinstance(invoice, dict) else None
+                zip_stem = _zip_stem_from_source_path(str(src_path)) if src_path else None
+                entry_id = manifest.get(zip_stem) if zip_stem else None
+                if entry_id and entry_id not in marked_entry_ids:
+                    try:
+                        outlook_client.mark_as_read_by_id(entry_id)
+                        marked_entry_ids.add(entry_id)
+                    except Exception:
+                        pass
+
             t_end = datetime.now().isoformat(timespec="seconds")
             if tracker is not None:
                 row = tracker.add_processed(
@@ -1018,5 +1075,8 @@ def run_safix_with_excel(
 
     print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail} missing_plate={missing_plate}")
     # overlay.stop()  # si quieres cerrarlo automáticamente
+
+    if mark_as_read and outlook_client is not None and com_ctx is not None:
+        com_ctx.__exit__(None, None, None)
 
 

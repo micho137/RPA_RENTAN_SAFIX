@@ -2,6 +2,7 @@ from __future__ import annotations
 from pathlib import Path
 from datetime import datetime
 import hashlib, re
+import json
 from .client import OutlookClient
 from .models import MailSummary, SaveResult
 
@@ -40,6 +41,13 @@ class OutlookService:
                          mark_as_read=True, move_to=None) -> SaveResult:
         out_dir.mkdir(parents=True, exist_ok=True)
         res = SaveResult(out_dir=out_dir)
+        manifest_path = out_dir / "_manifest.json"
+        manifest: dict[str, str] = {}
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except Exception:
+                manifest = {}
 
         for item in self.c.iter_items(folder, days_back, only_unread):
             subj = (getattr(item, "Subject", "") or "")[:80]
@@ -47,6 +55,7 @@ class OutlookService:
 
             atts = self.c.attachments(item)
             saved_now = 0
+            entry_id = getattr(item, "EntryID", "") or ""
 
             # Subcarpeta por fecha de recepción
             received = getattr(item, "ReceivedTime", None)
@@ -66,6 +75,8 @@ class OutlookService:
                 tmp.rename(final)
                 saved_now += 1
                 res.attachments_saved += 1
+                if entry_id:
+                    manifest[final.stem] = entry_id
 
             if mark_as_read:
                 self.c.mark_as_read(item)
@@ -73,6 +84,12 @@ class OutlookService:
                 self.c.move_to(item, move_to)
 
             res.processed += 1
+
+        try:
+            manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+            res.manifest_path = manifest_path
+        except Exception:
+            pass
 
         self.log.info(f"Processed={res.processed} | Saved={res.attachments_saved}")
         return res

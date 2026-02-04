@@ -42,6 +42,14 @@ class OutlookClient:
         for item in snapshot:
             yield item
 
+    def get_item_by_id(self, entry_id: str):
+        return self._ns.GetItemFromID(entry_id)
+
+    def mark_as_read_by_id(self, entry_id: str):
+        item = self.get_item_by_id(entry_id)
+        if item is not None:
+            self.mark_as_read(item)
+
     # Operaciones sobre MailItem
     @staticmethod
     def mark_as_read(mail_item):

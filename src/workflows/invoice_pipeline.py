@@ -70,7 +70,7 @@ def run_pipeline(
     dl = run_download(
         days_back=days_back,
         only_unread=only_unread,
-        mark_as_read=mark_as_read,
+        mark_as_read=False,
         move_to_processed=move_to_processed,
     )
     logger.info("Download done: processed=%s | saved=%s", dl.processed, dl.attachments_saved)
@@ -142,6 +142,7 @@ def run_pipeline(
             run_safix_with_excel(
                 excel_path=excel_path,
                 aggregated_json_path=agg_by_id_json,
+                mark_as_read=mark_as_read,
                 tracker=tracker,  # ✅ registra procesadas.xlsx
             )
         else:
@@ -150,6 +151,7 @@ def run_pipeline(
             run_safix_with_excel(
                 excel_path=excel_path,
                 json_root=json_dir,
+                mark_as_read=mark_as_read,
                 tracker=tracker,
             )
 
@@ -164,19 +166,22 @@ def run_pipeline(
     )
 
     # ✅ Cleanup final: conservar PDFs, XMLs y los logs Excel
-    keep_paths = [p for p in (
-        paths.get("descargados"),
-        paths.get("procesadas"),
-        paths.get("placas_no_encontradas"),
-        paths.get("doble_cc"),
-    ) if p]
+    if settings.enable_cleanup:
+        keep_paths = [p for p in (
+            paths.get("descargados"),
+            paths.get("procesadas"),
+            paths.get("placas_no_encontradas"),
+            paths.get("doble_cc"),
+        ) if p]
 
-    deleted_files, deleted_dirs = cleanup_output_dir_keep_pdf_xml(
-        output_dir=output_dir,
-        keep_exts=(".pdf", ".xml"),
-        keep_paths=keep_paths,
-    )
-    logger.info("[CLEANUP] deleted_files=%s deleted_dirs=%s", deleted_files, deleted_dirs)
+        deleted_files, deleted_dirs = cleanup_output_dir_keep_pdf_xml(
+            output_dir=output_dir,
+            keep_exts=(".pdf", ".xml", ".csv", ".json"),
+            keep_paths=keep_paths,
+        )
+        logger.info("[CLEANUP] deleted_files=%s deleted_dirs=%s", deleted_files, deleted_dirs)
+    else:
+        logger.info("[CLEANUP] omitido (ENABLE_CLEANUP=false)")
 
     return {
         "output_dir": output_dir,

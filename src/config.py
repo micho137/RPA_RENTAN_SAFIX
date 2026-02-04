@@ -34,6 +34,11 @@ class Settings:
     # =========================
     output_dir: Path = _dated_dir(os.getenv("OUTPUT_DIR", "./output"))
 
+    # =========================
+    # CLEANUP
+    # =========================
+    enable_cleanup: bool = _env_bool("ENABLE_CLEANUP", "false")
+
     extract_dir: Path = (
         Path(os.getenv("EXTRACT_DIR", "")).resolve()
         if os.getenv("EXTRACT_DIR")

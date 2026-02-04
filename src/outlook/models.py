@@ -15,3 +15,4 @@ class SaveResult:
     processed: int = 0
     attachments_saved: int = 0
     out_dir: Path | None = None
+    manifest_path: Path | None = None

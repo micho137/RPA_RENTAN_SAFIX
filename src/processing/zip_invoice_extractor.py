@@ -437,6 +437,8 @@ class ZipInvoiceExtractor:
         """
         import json
 
+        data["_source_path"] = str(source_path)
+
         doc_id = ((data.get("document") or {}).get("document_id")) or ""
         doc_id = str(doc_id).strip()
 
