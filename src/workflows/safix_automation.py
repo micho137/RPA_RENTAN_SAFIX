@@ -151,7 +151,7 @@ def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]
         if h:
             headers[h] = col_idx
 
-    required = ["PLACA", "CENTRO DE COSTOS", "INTERFACE"]
+    required = ["PLACA", "CENTRO DE COSTOS", "INTERFACE", "DOBLE CC"]
     missing = [r for r in required if r not in headers]
     if missing:
         raise ValueError(
@@ -171,10 +171,12 @@ def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]
 
         centro_costos = ws.cell(row=row_idx, column=headers["CENTRO DE COSTOS"]).value
         interface = ws.cell(row=row_idx, column=headers["INTERFACE"]).value
+        doble_cc = ws.cell(row=row_idx, column=headers["DOBLE CC"]).value
 
         catalog[placa] = {
             "centro_costos": str(centro_costos or "").strip(),
             "interface": str(interface or "").strip(),
+            "doble_cc": str(doble_cc or "").strip(),
         }
 
     return catalog
@@ -880,6 +882,20 @@ def run_safix_with_excel(
                     )
                     tracker.append_missing_plate_row(miss_row)
             else:
+                if str(row.get("doble_cc", "")).strip().upper() == "X":
+                    missing_plate += 1
+                    extra = f"placa con DOBLE CC | total={total}"
+                    if tracker is not None:
+                        miss_row = tracker.add_missing_plate(
+                            document_id=doc_id,
+                            placa=placa,
+                            total=int(total) if total is not None else None,
+                            key=str(key),
+                            error="placa no procesada por DOBLE CC",
+                        )
+                        tracker.append_missing_plate_row(miss_row)
+                    # Saltar procesamiento
+                    continue
                 interface = row.get("interface", "")
                 centro_costos = row.get("centro_costos", "")
                 extra = f"interface={interface or '-'} | cc={centro_costos or '-'} | total={total}"

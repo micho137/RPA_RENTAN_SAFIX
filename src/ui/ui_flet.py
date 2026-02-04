@@ -11,7 +11,7 @@ from src.workflows.invoice_pipeline import run_pipeline
 DATE_FMT = "%d/%m/%Y"
 
 ALLOWED_EXCEL_BASENAME = "Centros de Costos Vehiculos"
-EXPECTED_HEADERS = ["N° VEHICULO", "PLACA", "UBICACIÓN", "CENTRO DE COSTOS", "INTERFACE"]
+EXPECTED_HEADERS = ["N° VEHICULO", "PLACA", "UBICACIÓN", "CENTRO DE COSTOS", "INTERFACE", "DOBLE CC"]
 
 
 def main(page: ft.Page):
