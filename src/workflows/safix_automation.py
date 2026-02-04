@@ -885,6 +885,14 @@ def run_safix_with_excel(
                 if str(row.get("doble_cc", "")).strip().upper() == "X":
                     missing_plate += 1
                     extra = f"placa con DOBLE CC | total={total}"
+                    overlay.update(
+                        etapa="AIVO: OMITIDA",
+                        document_id=doc_id,
+                        placa=placa,
+                        current=idx,
+                        total=total_invoices,
+                        extra="Omitida por DOBLE CC",
+                    )
                     if tracker is not None:
                         miss_row = tracker.add_missing_plate(
                             document_id=doc_id,
@@ -894,6 +902,14 @@ def run_safix_with_excel(
                             error="placa no procesada por DOBLE CC",
                         )
                         tracker.append_missing_plate_row(miss_row)
+                        doble_row = tracker.add_doble_cc(
+                            document_id=doc_id,
+                            placa=placa,
+                            total=int(total) if total is not None else None,
+                            key=str(key),
+                            error="placa no procesada por DOBLE CC",
+                        )
+                        tracker.append_doble_cc_row(doble_row)
                     # Saltar procesamiento
                     continue
                 interface = row.get("interface", "")

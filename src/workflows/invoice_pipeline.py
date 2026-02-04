@@ -156,10 +156,11 @@ def run_pipeline(
     # ✅ Guardar Excels
     paths = tracker.save()
     logger.info(
-        "Logs generated: descargados=%s | procesadas=%s | placas_no_encontradas=%s",
+        "Logs generated: descargados=%s | procesadas=%s | placas_no_encontradas=%s | doble_cc=%s",
         paths.get("descargados"),
         paths.get("procesadas"),
         paths.get("placas_no_encontradas"),
+        paths.get("doble_cc"),
     )
 
     # ✅ Cleanup final: conservar PDFs, XMLs y los logs Excel
@@ -167,6 +168,7 @@ def run_pipeline(
         paths.get("descargados"),
         paths.get("procesadas"),
         paths.get("placas_no_encontradas"),
+        paths.get("doble_cc"),
     ) if p]
 
     deleted_files, deleted_dirs = cleanup_output_dir_keep_pdf_xml(

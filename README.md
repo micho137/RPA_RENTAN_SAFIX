@@ -72,6 +72,7 @@ python -m src.ui.ui_flet
 - PDF/XML: `output/extract/`
 - Logs: `output/logs/procesadas.xlsx`
 - Placas no encontradas: `output/logs/placas_no_encontradas.xlsx`
+- DOBLE CC: `output/logs/doble_cc.xlsx`
 - Errores (screenshots): `output/errors/`
 
 **Configuración (.env)**

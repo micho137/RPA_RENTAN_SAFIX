@@ -58,6 +58,17 @@ class MissingPlateRow:
     error: str = ""
 
 
+@dataclass
+class DobleCcRow:
+    timestamp: str
+    document_id: str
+    placa: str
+    total: Optional[int]
+    key: str
+    status: str  # DOBLE_CC
+    error: str = ""
+
+
 class RunTracker:
     """
     Logs:
@@ -73,6 +84,7 @@ class RunTracker:
         self.downloads: List[DownloadRow] = []
         self.processed: List[ProcessRow] = []
         self.missing_plates: List[MissingPlateRow] = []
+        self.doble_cc: List[DobleCcRow] = []
 
     def add_download(
         self,
@@ -140,6 +152,27 @@ class RunTracker:
         self.missing_plates.append(row)
         return row
 
+    def add_doble_cc(
+        self,
+        *,
+        document_id: str,
+        placa: str,
+        total: Optional[int],
+        key: str,
+        error: str = "",
+    ) -> DobleCcRow:
+        row = DobleCcRow(
+            timestamp=_now_iso(),
+            document_id=document_id,
+            placa=placa,
+            total=total,
+            key=key,
+            status="DOBLE_CC",
+            error=error,
+        )
+        self.doble_cc.append(row)
+        return row
+
     def save(self) -> dict[str, Path]:
         out = {}
 
@@ -154,6 +187,10 @@ class RunTracker:
         p3 = self.logs_dir / "placas_no_encontradas.xlsx"
         self._write_xlsx(p3, "placas_no_encontradas", [asdict(x) for x in self.missing_plates])
         out["placas_no_encontradas"] = p3
+
+        p4 = self.logs_dir / "doble_cc.xlsx"
+        self._write_xlsx(p4, "doble_cc", [asdict(x) for x in self.doble_cc])
+        out["doble_cc"] = p4
 
         return out
 
@@ -196,6 +233,27 @@ class RunTracker:
             wb = Workbook()
             ws = wb.active
             ws.title = "placas_no_encontradas"
+            ws.append(headers)
+
+        ws.append([getattr(row, h, "") for h in headers])
+        wb.save(path)
+
+    def append_doble_cc_row(self, row: DobleCcRow) -> None:
+        """
+        Agrega una fila al Excel de DOBLE CC en tiempo real.
+        """
+        path = self.logs_dir / "doble_cc.xlsx"
+        headers = list(asdict(row).keys())
+
+        if path.exists():
+            wb = load_workbook(filename=str(path))
+            ws = wb.active
+            if ws.max_row == 0 or (ws.max_row == 1 and ws.cell(1, 1).value is None):
+                ws.append(headers)
+        else:
+            wb = Workbook()
+            ws = wb.active
+            ws.title = "doble_cc"
             ws.append(headers)
 
         ws.append([getattr(row, h, "") for h in headers])
