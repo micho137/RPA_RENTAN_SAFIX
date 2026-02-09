@@ -188,7 +188,7 @@ def run_pipeline(
         "download": dl,
         "extract": res,
         "aggregate_by_id": agg_res,
-        "logs": {"descargados": paths["descargados"], "procesadas": paths["procesadas"]},
+        "logs": {"descargados": paths.get("descargados"), "procesadas": paths.get("procesadas")},
         "cleanup": {"deleted_files": deleted_files, "deleted_dirs": deleted_dirs},
         "paths": {
             "extract": extract_dir,
