@@ -7,6 +7,7 @@ from src.workflows.download_attachments import run_download
 from src.processing.zip_invoice_extractor import ZipInvoiceExtractor
 from src.processing.aggregate_json import build_invoices_by_id
 from src.workflows.safix_automation import run_safix_with_excel
+from src.outlook.report_mailer import send_report_email
 
 from src.core.run_tracking import RunTracker
 from src.core.cleanup import cleanup_output_dir_keep_pdf_xml
@@ -82,7 +83,7 @@ def run_pipeline(
     try:
         download_dir = Path(settings.download_dir).resolve()
         if download_dir.exists():
-            for p in sorted(download_dir.glob("*.zip")):
+            for p in sorted(download_dir.rglob("*.zip")):
                 tracker.add_download(
                     original_name=p.name,
                     saved_path=p,
@@ -166,6 +167,8 @@ def run_pipeline(
     )
 
     # ✅ Cleanup final: conservar PDFs, XMLs y los logs Excel
+    deleted_files = 0
+    deleted_dirs = 0
     if settings.enable_cleanup:
         keep_paths = [p for p in (
             paths.get("descargados"),
@@ -182,6 +185,29 @@ def run_pipeline(
         logger.info("[CLEANUP] deleted_files=%s deleted_dirs=%s", deleted_files, deleted_dirs)
     else:
         logger.info("[CLEANUP] omitido (ENABLE_CLEANUP=false)")
+
+    # ✅ Correo de reportes (opcional)
+    if getattr(settings, "report_email_enabled", False):
+        attachments = [
+            paths.get("descargados"),
+            paths.get("procesadas"),
+            paths.get("placas_no_encontradas"),
+            paths.get("doble_cc"),
+            index_csv if index_csv.exists() else None,
+        ]
+        # Adjunta tambien estado global de resume si existe.
+        global_files = [
+            settings.log_dir / "resume_state.json",
+            settings.log_dir / "facturas_descargadas.xlsx",
+            settings.log_dir / "facturas_procesadas_global.xlsx",
+        ]
+        attachments.extend([p for p in global_files if p.exists()])
+
+        send_report_email(
+            attachments=attachments,
+            logger=logger,
+            subject_suffix=output_dir.name,
+        )
 
     return {
         "output_dir": output_dir,

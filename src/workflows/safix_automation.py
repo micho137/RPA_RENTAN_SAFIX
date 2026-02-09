@@ -15,6 +15,7 @@ from pywinauto import Application, Desktop
 
 from src.config import settings
 from src.core.com_init import com_initialized
+from src.core.progress_store import ProgressStore
 from src.outlook.client import OutlookClient
 from src.ui.overlay_status import StatusOverlay
 
@@ -96,11 +97,11 @@ def load_attachment_manifest(download_dir: Path) -> Dict[str, str]:
         return {}
 
 
-def _zip_stem_from_source_path(source_path: str) -> Optional[str]:
+def _zip_stem_from_source_path(source_path: str, extract_root: Optional[Path] = None) -> Optional[str]:
     try:
         p = Path(source_path)
-        extract_root = settings.extract_dir
-        rel = p.relative_to(extract_root)
+        base = Path(extract_root) if extract_root else settings.extract_dir
+        rel = p.relative_to(base)
         return rel.parts[0] if rel.parts else None
     except Exception:
         # fallback: buscar carpeta "extract" en el path
@@ -582,8 +583,9 @@ class SafixAutomator:
         # Confirmaciones posteriores
         self.press_enter(3, self.cfg.wait_long)
 
-        # GOT
-        self.escribir_modal(self.cfg.got_code)
+        # GOT (ingreso directo, sin modal)
+        self.write_text_safe(self.cfg.got_code)
+        self.press_enter(1, self.cfg.wait_long)
 
         self.press_tab(1, self.cfg.wait_default)
 
@@ -633,7 +635,9 @@ class SafixAutomator:
         self.wait(self.cfg.wait_long)
 
         self.press_tab(4, self.cfg.wait_long)
-        self.escribir_modal(self.cfg.got_code)
+        # GOT (ingreso directo, sin modal)
+        self.write_text_safe(str(centro_costos))
+        self.press_enter(1, self.cfg.wait_long)
         self.wait(self.cfg.wait_long)
 
         # Cerrar transacción
@@ -817,6 +821,7 @@ def run_safix_with_excel(
     from datetime import datetime
 
     cfg = SafixConfig.from_settings()
+    progress_store = ProgressStore(settings.log_dir)
     if aggregated_json_path is not None:
         cfg = replace(cfg, invoices_by_id_path=aggregated_json_path)
 
@@ -825,8 +830,10 @@ def run_safix_with_excel(
 
     if json_root is not None:
         invoices_by_id = load_invoices_from_json_dir(json_root)
+        run_extract_root = Path(json_root).resolve().parent / "extract"
     else:
         invoices_by_id = load_invoices_by_id(cfg.invoices_by_id_path)
+        run_extract_root = cfg.invoices_by_id_path.resolve().parent.parent / "extract"
     if not invoices_by_id:
         print("[SAFIX] No hay facturas. No se ejecuta.")
         _show_no_invoices_message()
@@ -846,12 +853,12 @@ def run_safix_with_excel(
             deduped[doc] = inv
     items = list(deduped.items())
 
-    # ✅ Saltar procesadas (si existe procesadas.xlsx)
-    processed_ids = set()
+    # ✅ Saltar procesadas (corrida actual + historial global)
+    processed_ids = set(progress_store.get_processed_ok_ids())
     if tracker is not None:
-        processed_ids = load_processed_ids_from_log(tracker.logs_dir / "procesadas.xlsx")
+        processed_ids |= load_processed_ids_from_log(tracker.logs_dir / "procesadas.xlsx")
     elif json_root is not None:
-        processed_ids = load_processed_ids_from_log(Path(settings.output_dir) / "logs" / "procesadas.xlsx")
+        processed_ids |= load_processed_ids_from_log(Path(settings.output_dir) / "logs" / "procesadas.xlsx")
 
     if processed_ids:
         items = [(k, v) for (k, v) in items if str(k).strip() not in processed_ids]
@@ -860,17 +867,7 @@ def run_safix_with_excel(
     manifest = load_attachment_manifest(settings.download_dir) if mark_as_read else {}
     marked_entry_ids: set[str] = set()
     outlook_client: Optional[OutlookClient] = None
-    if mark_as_read and manifest:
-        com_ctx = com_initialized()
-        com_ctx.__enter__()
-        try:
-            outlook_client = OutlookClient()
-        except Exception:
-            com_ctx.__exit__(None, None, None)
-            outlook_client = None
-            manifest = {}
-    else:
-        com_ctx = None
+    com_ctx = None
     total_invoices = len(items)
 
     # Inicia contador global desde que aparece overlay:
@@ -885,12 +882,26 @@ def run_safix_with_excel(
 
     automator = SafixAutomator(cfg)
 
-    print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
+    if json_root is not None:
+        print(f"[SAFIX] leyendo JSON individuales en: {Path(json_root).resolve()}")
+    else:
+        print(f"[SAFIX] leyendo agregado: {cfg.invoices_by_id_path.resolve()}")
     print(f"[SAFIX] total facturas: {total_invoices}")
 
     automator.bootstrap()
     automator.refocus_main()
     automator.wait(1.0)
+
+    if mark_as_read and manifest:
+        com_ctx = com_initialized()
+        com_ctx.__enter__()
+        try:
+            outlook_client = OutlookClient()
+        except Exception:
+            com_ctx.__exit__(None, None, None)
+            com_ctx = None
+            outlook_client = None
+            manifest = {}
 
     ok = 0
     fail = 0
@@ -910,6 +921,11 @@ def run_safix_with_excel(
                 invoice,
                 fallback_plate=cfg.fallback_placa,
                 key_fallback_doc_id=key,
+            )
+            progress_store.register_downloaded(
+                document_id=doc_id,
+                placa=placa,
+                source_key=str(key),
             )
 
             row = plate_catalog.get(placa)
@@ -985,7 +1001,7 @@ def run_safix_with_excel(
 
             if mark_as_read and outlook_client is not None:
                 src_path = (invoice or {}).get("_source_path") if isinstance(invoice, dict) else None
-                zip_stem = _zip_stem_from_source_path(str(src_path)) if src_path else None
+                zip_stem = _zip_stem_from_source_path(str(src_path), run_extract_root) if src_path else None
                 entry_id = manifest.get(zip_stem) if zip_stem else None
                 if entry_id and entry_id not in marked_entry_ids:
                     try:
@@ -995,6 +1011,13 @@ def run_safix_with_excel(
                         pass
 
             t_end = datetime.now().isoformat(timespec="seconds")
+            progress_store.mark_processed(
+                document_id=doc_id,
+                placa=placa,
+                status="OK",
+                error="",
+                source_key=str(key),
+            )
             if tracker is not None:
                 row = tracker.add_processed(
                     timestamp_start=t_start,
@@ -1014,6 +1037,13 @@ def run_safix_with_excel(
         except Exception as e:
             fail += 1
             t_end = datetime.now().isoformat(timespec="seconds")
+            progress_store.mark_processed(
+                document_id=doc_id,
+                placa=placa,
+                status="FAIL",
+                error=str(e),
+                source_key=str(key),
+            )
 
             # ✅ Overlay: error contextual
             overlay.update(
@@ -1063,6 +1093,9 @@ def run_safix_with_excel(
         if cfg.breath_sec > 0:
             time.sleep(cfg.breath_sec)
 
+    if com_ctx is not None:
+        com_ctx.__exit__(None, None, None)
+
     overlay.update(
         etapa="AIVO: Finalizado",
         document_id="",
@@ -1076,7 +1109,5 @@ def run_safix_with_excel(
     print(f"[SAFIX] Finalizado. OK={ok} FAIL={fail} missing_plate={missing_plate}")
     # overlay.stop()  # si quieres cerrarlo automáticamente
 
-    if mark_as_read and outlook_client is not None and com_ctx is not None:
-        com_ctx.__exit__(None, None, None)
 
 

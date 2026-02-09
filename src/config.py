@@ -39,6 +39,18 @@ class Settings:
     # =========================
     enable_cleanup: bool = _env_bool("ENABLE_CLEANUP", "false")
 
+    # =========================
+    # REPORTE POR CORREO
+    # =========================
+    report_email_enabled: bool = _env_bool("REPORT_EMAIL_ENABLED", "false")
+    report_email_to: str = os.getenv("REPORT_EMAIL_TO", "").strip()
+    report_email_cc: str = os.getenv("REPORT_EMAIL_CC", "").strip()
+    report_email_subject: str = os.getenv("REPORT_EMAIL_SUBJECT", "Reporte automatizacion SAFIX").strip()
+    report_email_body: str = os.getenv(
+        "REPORT_EMAIL_BODY",
+        "Adjunto reportes de la ejecucion automatizada.",
+    ).strip()
+
     extract_dir: Path = (
         Path(os.getenv("EXTRACT_DIR", "")).resolve()
         if os.getenv("EXTRACT_DIR")
