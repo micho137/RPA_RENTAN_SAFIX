@@ -1,97 +1,106 @@
-# RPA Outlook + SAFIX (COM-based)
+# RPA Outlook + SAFIX (Windows / COM)
 
-Automatiza Microsoft Outlook Desktop (Windows) vía COM con pywin32, procesa facturas (XML/PDF/OCR), consolida por `document_id` y carga en SAFIX/XENCO mediante automatización visual.
+Automatiza la descarga de adjuntos desde Outlook Desktop, extrae y procesa facturas (XML/PDF), y carga datos en SAFIX/XENCO por automatizacion de UI.
 
-Incluye UI en Flet para ejecutar el pipeline completo y logs en Excel en tiempo real.
+Tambien incluye:
+- reanudacion de proceso (resume) entre ejecuciones,
+- logs en Excel en tiempo real,
+- envio opcional de reportes por correo al finalizar.
 
-**Características principales**
-- Acceso directo a Outlook Desktop usando COM (pywin32)
-- Descarga controlada de adjuntos con filtros por fecha y no leídos
-- Extracción automática de ZIPs
-- Procesamiento de XML y PDF (OCR cuando aplica)
-- Consolidación por factura (`document_id`)
-- Automatización visual de SAFIX (PyAutoGUI + PyWinAuto)
-- Overlay de estado en tiempo real
-- Logs Excel en tiempo real de procesadas y placas no encontradas
-- Captura de pantalla automática en errores (opcional)
-- Configuración centralizada mediante `.env`
-- Interfaz gráfica (Flet)
-
-**Estructura del proyecto**
-```
-.
-├─ src/
-│  ├─ config.py
-│  ├─ assets/
-│  ├─ core/
-│  ├─ outlook/
-│  ├─ processing/
-│  ├─ workflows/
-│  └─ ui/
-├─ output/
-├─ logs/
-├─ main.py
-├─ .env
-├─ README.md
-└─ requirements.txt
-```
-
-**Requerimientos**
+## Requisitos
 - Windows 10/11
-- Outlook Desktop instalado y con sesión iniciada
-- SAFIX/XENCO instalado
-- Acceso al archivo `.jnlp` de SAFIX
+- Outlook Desktop con sesion iniciada
+- SAFIX/XENCO instalado y acceso al `.jnlp`
 - Python 3.9+
-- Coincidencia de arquitectura (x64/x86) entre Python y Outlook
+- Misma arquitectura entre Python y Outlook (x64/x86)
 
-**Instalación**
+## Instalacion
 ```bash
 pip install -r requirements.txt
 ```
 
-**Ejecución**
+## Ejecucion
+Entrada principal:
 ```bash
 python main.py
 ```
 
-También funciona:
+Alternativa:
 ```bash
 python -m src.ui.ui_flet
 ```
 
-**Flujo general**
-1. Descargar adjuntos desde Outlook (ZIP).
-2. Extraer ZIPs.
-3. Procesar XML/PDF y generar JSON por factura.
-4. Automatizar carga en SAFIX usando el Excel de placas.
-6. Registrar logs en Excel y limpiar archivos temporales.
+## Flujo actual
+1. Descarga adjuntos ZIP desde Outlook.
+2. Extrae ZIPs y genera JSON individuales por factura.
+3. Ejecuta SAFIX con esas facturas.
+4. Marca correo como leido solo cuando la factura queda `OK` en SAFIX.
+5. Genera reportes y estado de reanudacion.
 
-**Archivos de salida**
-- JSONs: `output/json/`
-- Agregado: no se genera (se usan JSON individuales).
-- PDF/XML: `output/extract/`
-- Logs: `output/logs/procesadas.xlsx`
-- Placas no encontradas: `output/logs/placas_no_encontradas.xlsx`
-- DOBLE CC: `output/logs/doble_cc.xlsx`
-- Errores (screenshots): `output/errors/`
+## Salidas por ejecucion
+Se crea carpeta con fecha/hora:
+- `output/YYYY-MM-DD_HHMMSS/`
 
-**Configuración (.env)**
-Ejemplo base:
+Archivos principales:
+- `output/.../json/index.csv`
+- `output/.../logs/descargados.xlsx`
+- `output/.../logs/procesadas.xlsx`
+- `output/.../logs/placas_no_encontradas.xlsx`
+- `output/.../logs/doble_cc.xlsx`
+
+## Estado global de reanudacion (persistente)
+Se guarda en `src/logs/` (no depende de la carpeta de fecha):
+- `src/logs/resume_state.json`
+- `src/logs/facturas_descargadas.xlsx`
+- `src/logs/facturas_procesadas_global.xlsx`
+
+Uso:
+- Si una factura ya esta en estado `OK`, no se reprocesa en la siguiente corrida.
+- Si una corrida se interrumpe, la siguiente retoma pendientes.
+
+## Logging unificado
+Todo lo impreso en consola se guarda en:
+- `src/logs/app_YYYY-MM-DD.log`
+
+## Excel de placas (UI)
+Nombre esperado:
+- `Centros de Costos Vehiculos.xlsx`
+
+Columnas requeridas:
+- `N° VEHICULO`
+- `PLACA`
+- `UBICACIÓN`
+- `CENTRO DE COSTOS`
+- `INTERFACE`
+- `DOBLE CC`
+
+Regla `DOBLE CC`:
+- Si la celda contiene `X`, la placa se omite en SAFIX.
+- Se registra en:
+  - `placas_no_encontradas.xlsx`
+  - `doble_cc.xlsx`
+
+## Variables `.env` relevantes
+Base:
 ```env
-OUTLOOK_ACCOUNT=CORREO
-OUTLOOK_FOLDER=NOMBRE_DE_CARPETA_EN_CORREO
+OUTLOOK_ACCOUNT=
+OUTLOOK_FOLDER=
 DOWNLOAD_DIR=./downloads
 LOG_DIR=./src/logs
 OUTPUT_DIR=./output
+ENABLE_CLEANUP=false
+```
 
-SAFIX_SHORTCUT=C:/ruta/a/safix.jnlp
+SAFIX:
+```env
+SAFIX_SHORTCUT=
 SAFIX_WINDOW_TITLE=.*XENCO - Administracion del Sistema.*
-SAFIX_USER=usuario
-SAFIX_PASS=clave
-SAFIX_NIT=123456789
+SAFIX_USER=
+SAFIX_PASS=
+SAFIX_NIT=
 SAFIX_XOT_CODE=XOT05
 SAFIX_GOT_CODE=GOT
-SAFIX_CCAMPO_84=84
+SAFIX_CAMPO_84=84
 SAFIX_CAMPO_05=05
 SAFIX_OBL_CODE=OBL_EXCLU
 SAFIX_OBL2_CODE=OBL_ANTCON
@@ -101,18 +110,10 @@ SAFIX_Z_ICON=src/assets/Z.png
 SAFIX_ENGRANES_ICON=src/assets/engranes.png
 ```
 
-**Logs unificados**
-- Todo lo que se imprime en consola se guarda en un único archivo por fecha:
-  `src/logs/app_YYYY-MM-DD.log`
-
-**Output con fecha**
-- Cada ejecución genera una carpeta con timestamp:
-  `output/YYYY-MM-DD_HHMMSS/`
-
-Opciones de robustez SAFIX:
+Robustez:
 ```env
-SAFIX_STOP_ON_ERROR=true
-SAFIX_SOFT_RESET_EVERY=25
+SAFIX_STOP_ON_ERROR=false
+SAFIX_SOFT_RESET_EVERY=0
 SAFIX_LOG_EVERY=1
 SAFIX_BREATH_SEC=0.4
 SAFIX_ERROR_DIR=./output/errors
@@ -120,26 +121,36 @@ SAFIX_PREFLIGHT_ICONS=false
 SAFIX_SCREENSHOT_ON_ERROR=true
 ```
 
-**Notas de uso**
-- La UI permite seleccionar rango de fechas, solo no leídos y marcar como leídos.
-- El Excel debe llamarse exactamente `Centros de Costos Vehiculos.xlsx`.
-- Cabeceras requeridas: `N° VEHICULO | PLACA | UBICACIÓN | CENTRO DE COSTOS | INTERFACE`
-
-**Pruebas**
-```bash
-pytest -q
+Correo de reportes (opcional):
+```env
+REPORT_EMAIL_ENABLED=false
+REPORT_EMAIL_TO=
+REPORT_EMAIL_CC=
+REPORT_EMAIL_SUBJECT=Reporte automatizacion SAFIX
+REPORT_EMAIL_BODY=Adjunto reportes de la ejecucion automatizada.
 ```
 
-**Seguridad**
-- No se almacenan credenciales en el código.
-- Outlook COM accede al perfil del usuario autenticado.
+## Envio de correo al finalizar
+Si `REPORT_EMAIL_ENABLED=true`, el pipeline envia correo por Outlook COM con adjuntos disponibles:
+- `descargados.xlsx`
+- `procesadas.xlsx`
+- `placas_no_encontradas.xlsx`
+- `doble_cc.xlsx`
+- `index.csv`
+- `resume_state.json`
+- `facturas_descargadas.xlsx`
+- `facturas_procesadas_global.xlsx`
 
-**Limitaciones**
-- Solo Windows con Outlook Desktop.
-- Requiere sesión activa en Outlook.
-- No funciona como servicio sin usuario logueado.
+## Pruebas
+```bash
+python -m pytest -q
+```
 
-**Contacto y mantenimiento**
-Autor: Michaen Stebin Rangel Giraldo  
-Rol: Arquitecto de Soluciones/Software/RPA  
-Proyecto: Rentan E.I.C.E – Inter-Telco S.A.S
+Pruebas agregadas de regresion:
+- `tests/test_pipeline_regressions.py`
+- `tests/test_progress_store.py`
+
+## Notas operativas
+- En la UI se usan: `Solo no leidos` y `Marcar como leidos`.
+- El marcado como leido es posterior al `OK` en SAFIX.
+- Si no hay facturas, no se inicia SAFIX y se muestra mensaje.
