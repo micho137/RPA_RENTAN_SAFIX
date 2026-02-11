@@ -634,6 +634,10 @@ class SafixAutomator:
         self.click_image(self.cfg.z_icon)
         self.wait(self.cfg.wait_long)
 
+        interface_norm = str(interface_to_write).strip()
+        if interface_norm == "84":
+            pyautogui.press("down")
+            self.wait(self.cfg.wait_default)
         self.press_tab(4, self.cfg.wait_long)
         # GOT (ingreso directo, sin modal)
         self.write_text_safe(str(centro_costos))
