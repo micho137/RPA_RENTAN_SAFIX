@@ -1,5 +1,6 @@
 # src/workflows/invoice_pipeline.py
 from pathlib import Path
+import shutil
 
 from src.config import settings
 from src.core.logging_config import setup_logger
@@ -15,6 +16,18 @@ from src.core.cleanup import cleanup_output_dir_keep_pdf_xml
 
 OUTPUT_DIR = settings.output_dir
 AGG_BY_ID_JSON = (OUTPUT_DIR / "json" / "all_invoices_by_id.json")
+
+
+def _safe_remove_dir(path: Path, logger, label: str) -> None:
+    p = Path(path).resolve()
+    if not p.exists():
+        logger.info("[POST][CLEAN] %s no existe: %s", label, p)
+        return
+    try:
+        shutil.rmtree(p)
+        logger.info("[POST][CLEAN] %s eliminado: %s", label, p)
+    except Exception as ex:
+        logger.warning("[POST][CLEAN] No se pudo eliminar %s (%s): %s", label, p, ex)
 
 
 def run_pipeline(
@@ -203,11 +216,15 @@ def run_pipeline(
         ]
         attachments.extend([p for p in global_files if p.exists()])
 
-        send_report_email(
+        sent = send_report_email(
             attachments=attachments,
             logger=logger,
             subject_suffix=output_dir.name,
         )
+        if sent:
+            _safe_remove_dir(output_dir, logger, "output")
+            _safe_remove_dir(settings.log_dir, logger, "logs")
+            _safe_remove_dir(settings.download_dir, logger, "downloads")
 
     return {
         "output_dir": output_dir,

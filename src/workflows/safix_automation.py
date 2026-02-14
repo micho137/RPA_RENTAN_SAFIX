@@ -277,6 +277,9 @@ class SafixConfig:
     valores_icon: Path
     z_icon: Path
     engranes_icon: Path
+    door_icon: Path
+    conn_icon: Path
+    close_icon: Path
 
     # Credenciales / negocio
     user: str
@@ -328,6 +331,9 @@ class SafixConfig:
             valores_icon=_p("safix_valores_icon"),
             z_icon=_p("safix_z_icon"),
             engranes_icon=_p("safix_engranes_icon"),
+            door_icon=_p("safix_door_icon"),
+            conn_icon=_p("safix_conn_icon"),
+            close_icon=_p("safix_close_icon"),
             user=str(getattr(settings, "safix_user", "") or "").strip(),
             password=str(getattr(settings, "safix_pass", "") or "").strip(),
             nit=str(getattr(settings, "safix_nit", "") or "").strip(),
@@ -518,18 +524,48 @@ class SafixAutomator:
     def click_tesoreria(self):
         return self.click_image(self.cfg.tesoreria_icon)
 
+    def click_images_sequence(
+        self,
+        image_paths: list[str | Path],
+        *,
+        timeout_per_image: float = 20.0,
+        interval: float = 0.8,
+        continue_on_error: bool = False,
+    ) -> bool:
+        """Hace clic en una secuencia de imagenes, en el orden indicado."""
+        if not image_paths:
+            raise ValueError("Debe enviar al menos una imagen para la secuencia.")
+
+        all_ok = True
+        total = len(image_paths)
+        for idx, image_path in enumerate(image_paths, start=1):
+            try:
+                self.click_image(image_path=image_path, timeout=timeout_per_image, interval=interval)
+                if idx < total:
+                    self.wait(self.cfg.wait_long)
+            except Exception as ex:
+                all_ok = False
+                if continue_on_error:
+                    print(f"[SAFIX][CIERRE] No se pudo hacer clic en imagen #{idx}: {image_path} -> {ex}")
+                    if idx < total:
+                        self.wait(self.cfg.wait_long)
+                    continue
+                raise
+
+        return all_ok
+
     # ---------- ALT+P,O,G (solo 1 vez en bootstrap) ----------
     def alt_p_o_g(self):
         pyautogui.keyDown("alt")
-        time.sleep(0.1)
+        self.wait(self.cfg.wait_default)
         pyautogui.press("p")
-        time.sleep(0.25)
+        self.wait(self.cfg.wait_default)
         pyautogui.press("o")
-        time.sleep(0.25)
+        self.wait(self.cfg.wait_default)
         pyautogui.press("g")
-        time.sleep(0.25)
+        self.wait(self.cfg.wait_default)
         pyautogui.keyUp("alt")
-        time.sleep(1.2)
+        self.wait(self.cfg.wait_long)
 
     # ---------- Escribir en modal CTRL + L ----------
     def escribir_modal(self, text_str: str):
@@ -572,7 +608,7 @@ class SafixAutomator:
         self.wait(self.cfg.wait_popup * 1.5)
 
         # Confirmaciones iniciales
-        self.press_enter(1, self.cfg.wait_popup)
+        #self.press_enter(1, self.cfg.wait_popup)
         self.press_tab(4, self.cfg.wait_long)
 
         # Document ID
@@ -587,7 +623,7 @@ class SafixAutomator:
         self.write_text_safe(self.cfg.got_code)
         self.press_enter(1, self.cfg.wait_long)
 
-        self.press_tab(1, self.cfg.wait_default)
+        #self.press_tab(1, self.cfg.wait_default)
 
         # Campo 84
         interface_to_write = (interface or "").strip() or self.cfg.campo_84
@@ -639,22 +675,23 @@ class SafixAutomator:
             pyautogui.press("down")
             self.wait(self.cfg.wait_default)
         self.press_tab(4, self.cfg.wait_long)
-        # GOT (ingreso directo, sin modal)
+
+        # CC (ingreso directo, sin modal)
         self.write_text_safe(str(centro_costos))
-        self.press_enter(1, self.cfg.wait_long)
+        #self.press_enter(1, self.cfg.wait_long)
         self.wait(self.cfg.wait_long)
 
         # Cerrar transacción
         self.click_image(self.cfg.engranes_icon)
         self.wait(self.cfg.wait_long)
         self.press_enter(1, self.cfg.wait_long)
-        self.wait(self.cfg.wait_default)
+        self.wait(self.cfg.wait_long)
 
         # Limpieza suave para asegurar que quedas listo en XOT
         pyautogui.press("esc")
-        self.wait(0.3)
+        self.wait(self.cfg.wait_default)
         self.refocus_main()
-        self.wait(0.4)
+        self.wait(self.cfg.wait_default)
 
     # ---------- Bootstrap ----------
     def bootstrap(self):
@@ -848,7 +885,7 @@ def run_safix_with_excel(
     overlay.start()
     overlay.update(etapa="AIVO: RENTAN", extra="Abriendo SAFIX y preparando sesión…")
 
-    # ✅ Deduplicar por document_id
+    # Deduplicar por document_id
     deduped: Dict[str, Any] = {}
     for key, inv in invoices_by_id.items():
         doc = ((inv.get("document") or {}).get("document_id")) if isinstance(inv, dict) else None
@@ -857,7 +894,7 @@ def run_safix_with_excel(
             deduped[doc] = inv
     items = list(deduped.items())
 
-    # ✅ Saltar procesadas (corrida actual + historial global)
+    # Saltar procesadas (corrida actual + historial global)
     processed_ids = set(progress_store.get_processed_ok_ids())
     if tracker is not None:
         processed_ids |= load_processed_ids_from_log(tracker.logs_dir / "procesadas.xlsx")
@@ -867,7 +904,7 @@ def run_safix_with_excel(
     if processed_ids:
         items = [(k, v) for (k, v) in items if str(k).strip() not in processed_ids]
 
-    # ✅ preparar marcado como leído (después de procesar cada factura)
+    # preparar marcado como leído (después de procesar cada factura)
     manifest = load_attachment_manifest(settings.download_dir) if mark_as_read else {}
     marked_entry_ids: set[str] = set()
     outlook_client: Optional[OutlookClient] = None
@@ -982,7 +1019,7 @@ def run_safix_with_excel(
                 centro_costos = row.get("centro_costos", "")
                 extra = f"interface={interface or '-'} | cc={centro_costos or '-'} | total={total}"
 
-            # ✅ Overlay: mostrar lo que se está procesando en el momento
+            # Overlay: mostrar lo que se está procesando en el momento
             overlay.update(
                 etapa="AIVO: Procesando factura",
                 document_id=doc_id,
@@ -1049,7 +1086,7 @@ def run_safix_with_excel(
                 source_key=str(key),
             )
 
-            # ✅ Overlay: error contextual
+            # Overlay: error contextual
             overlay.update(
                 etapa="AIVO: ERROR",
                 document_id=doc_id,
@@ -1099,6 +1136,16 @@ def run_safix_with_excel(
 
     if com_ctx is not None:
         com_ctx.__exit__(None, None, None)
+
+    # Cerrar SAFIX 
+    automator.click_images_sequence([
+        cfg.salir_icon,
+        cfg.conn_icon,
+        cfg.close_icon
+    ],
+    timeout_per_image=15.0,
+    continue_on_error=False
+    )
 
     overlay.update(
         etapa="AIVO: Finalizado",
