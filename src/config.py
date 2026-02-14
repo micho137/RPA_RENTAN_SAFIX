@@ -95,7 +95,7 @@ class Settings:
     safix_engranes_icon: str = os.getenv("SAFIX_ENGRANES_ICON", "assets/engranes.png")
     safix_door_icon: str = os.getenv("SAFIX_DOOR_ICON", "assets/salir.png")
     safix_conn_icon: str = os.getenv("SAFIX_CONN_ICON", "assets/conn.png")
-    safix_logo_icon: str = os.getenv("SAFIX_CLOSE_ICON", "assets/close_conn.png")
+    safix_close_icon: str = os.getenv("SAFIX_CLOSE_ICON", "assets/close_conn.png")
 
     safix_user: str = os.getenv("SAFIX_USER", "")
     safix_pass: str = os.getenv("SAFIX_PASS", "")

@@ -1139,7 +1139,7 @@ def run_safix_with_excel(
 
     # Cerrar SAFIX 
     automator.click_images_sequence([
-        cfg.salir_icon,
+        cfg.door_icon,
         cfg.conn_icon,
         cfg.close_icon
     ],
