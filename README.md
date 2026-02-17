@@ -95,6 +95,7 @@ SAFIX_VALORES_ICON=src/assets/valores.png
 SAFIX_Z_ICON=src/assets/Z.png
 SAFIX_ENGRANES_ICON=src/assets/engranes.png
 SAFIX_DOOR_ICON=src/assets/salir.png
+SAFIX_CONN_ICON=src/assets/conn.png
 ```
 
 Mitigaciones:
@@ -115,7 +116,8 @@ SAFIX_RECOVER_SESSION_ON_ERROR=true
 
 Pausa nocturna:
 - Si `SAFIX_NIGHT_PAUSE_ENABLED=true`, el bot pausa entre facturas dentro de la ventana `START -> RESUME`.
-- Durante pausa intenta cerrar SAFIX, espera hasta la hora de reanudaci?n y vuelve a abrir sesi?n.
+- Durante pausa nocturna cierra sesi?n de forma controlada: click `door_icon` -> `ALT+A` -> `ALT+S` -> click `conn_icon`.
+- Luego espera hasta la hora de reanudaci?n y vuelve a abrir sesi?n.
 - Al reanudar contin?a pendientes (no reprocesa `OK` por el estado persistente).
 
 Correo (opcional):
@@ -130,4 +132,5 @@ REPORT_EMAIL_BODY=Adjunto reportes de la ejecucion automatizada.
 ## Pruebas
 ```bash
 python -m pytest -q
-```
+```
+

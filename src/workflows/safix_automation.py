@@ -215,11 +215,7 @@ def _pause_if_night_window(
     print(f"[SAFIX] Pausa nocturna activa. Reanudando a las {resume_txt}.")
 
     try:
-        automator.click_images_sequence(
-            [cfg.door_icon],
-            timeout_per_image=15.0,
-            continue_on_error=True,
-        )
+        automator.close_session_for_night_pause()
     except Exception:
         pass
 
@@ -365,6 +361,7 @@ class SafixConfig:
     z_icon: Path
     engranes_icon: Path
     door_icon: Path
+    conn_icon: Path
 
     # Credenciales / negocio
     user: str
@@ -422,6 +419,7 @@ class SafixConfig:
             z_icon=_p("safix_z_icon"),
             engranes_icon=_p("safix_engranes_icon"),
             door_icon=_p("safix_door_icon"),
+            conn_icon=_p("safix_conn_icon"),
             user=str(getattr(settings, "safix_user", "") or "").strip(),
             password=str(getattr(settings, "safix_pass", "") or "").strip(),
             nit=str(getattr(settings, "safix_nit", "") or "").strip(),
@@ -497,6 +495,7 @@ class SafixAutomator:
             self.cfg.valores_icon,
             self.cfg.z_icon,
             self.cfg.engranes_icon,
+            self.cfg.conn_icon,
         ]:
             if not Path(p).exists():
                 missing.append(str(p))
@@ -517,6 +516,27 @@ class SafixAutomator:
         main_window = app.window(handle=main_win.handle)
         main_window.set_focus()
         return app, main_window
+
+    def is_main_window_open(self) -> bool:
+        desktop = Desktop(backend="win32")
+
+        if self._main_handle is not None:
+            try:
+                win = desktop.window(handle=self._main_handle)
+                if win.exists():
+                    return True
+            except Exception:
+                pass
+
+        try:
+            win = desktop.window(title_re=self.cfg.main_window_title_re)
+            if win.exists():
+                self._main_handle = int(win.handle)
+                return True
+        except Exception:
+            pass
+
+        return False
 
     def refocus_main(self):
         desktop = Desktop(backend="win32")
@@ -597,6 +617,34 @@ class SafixAutomator:
         self.write_text_safe(self.cfg.password)
         pyautogui.press("enter")
 
+    def _bootstrap_login_with_recovery(self):
+        """
+        Recupera el caso donde SAFIX muestra conflicto de sesión activa y luego cierra la app.
+        Estrategia: intentar login, confirmar con ENTER y validar si la ventana principal sigue viva.
+        Si se cierra, reabrir y reintentar una vez.
+        """
+        for attempt in range(1, 3):
+            self.refocus_main()
+            self.wait(1.0)
+            self.do_login()
+            self.wait(self.cfg.login_wait)
+
+            # Confirmación por si aparece diálogo de sesión ya abierta.
+            pyautogui.press("enter")
+            self.wait(self.cfg.wait_default)
+
+            if self.is_main_window_open():
+                return
+
+            print(
+                f"[SAFIX][RECOVERY] SAFIX se cerró tras login (posible sesión activa). "
+                f"Reabriendo intento {attempt}/2."
+            )
+            self.launch_and_focus_main()
+            self.wait(self.cfg.form_ready_wait)
+
+        raise RuntimeError("No se pudo recuperar sesión SAFIX después de conflicto de login.")
+
     # ---------- Click imagen ----------
     def click_image(self, image_path: str | Path, timeout: float = 40.0, interval: float = 1.0) -> bool:
         icon_path = Path(image_path)
@@ -646,6 +694,29 @@ class SafixAutomator:
                 raise
 
         return all_ok
+
+    def close_session_for_night_pause(self):
+        """
+        Cierre controlado de sesión SAFIX para ventana nocturna:
+        1) click door_icon
+        2) ALT+A
+        3) ALT+S
+        4) click conn_icon
+        """
+        self.click_image(self.cfg.door_icon, timeout=15.0, interval=0.8)
+        self.wait(self.cfg.wait_default)
+
+        pyautogui.keyDown("alt")
+        self.wait(self.cfg.wait_default)
+
+        pyautogui.press("a")
+        self.wait(self.cfg.wait_default)
+
+        pyautogui.press("s")
+        self.wait(self.cfg.wait_default)
+
+        self.click_image(self.cfg.conn_icon, timeout=15.0, interval=0.8)
+        self.wait(self.cfg.wait_long)
 
     # ---------- ALT+P,O,G (solo 1 vez en bootstrap) ----------
     def alt_p_o_g(self):
@@ -790,25 +861,40 @@ class SafixAutomator:
     def bootstrap(self):
         if self.cfg.preflight_icons:
             self.validate_icon_files()
+        launched_now = False
+        if not self.is_main_window_open():
+            self.launch_and_focus_main()
+            self.wait(self.cfg.form_ready_wait)
+            launched_now = True
+        else:
+            self.refocus_main()
+            self.wait(1.0)
 
-        self.launch_and_focus_main()
-        time.sleep(self.cfg.form_ready_wait)
+        # Solo intenta login cuando la app fue lanzada en este bootstrap.
+        # Si ya estaba abierta, asumimos sesión activa y evitamos escribir sobre otros campos.
+        if launched_now:
+            self._bootstrap_login_with_recovery()
+            self.refocus_main()
+            self.wait(1.0)
 
-        self.refocus_main()
-        self.wait(1.0)
+        try:
+            self.click_tesoreria()
+            self.wait(self.cfg.wait_long * 2)
 
-        self.do_login()
-        time.sleep(self.cfg.login_wait)
-
-        self.refocus_main()
-        self.wait(1.0)
-
-        self.click_tesoreria()
-        self.wait(self.cfg.wait_long * 2)
-
-        # Entrar una sola vez al flujo que deja el cursor en XOT
-        self.alt_p_o_g()
-        self.wait(self.cfg.wait_long)
+            # Entrar una sola vez al flujo que deja el cursor en XOT
+            self.alt_p_o_g()
+            self.wait(self.cfg.wait_long)
+        except Exception:
+            # Si la sesión existente no estaba usable, relanzamos completo.
+            self.launch_and_focus_main()
+            self.wait(self.cfg.form_ready_wait)
+            self._bootstrap_login_with_recovery()
+            self.refocus_main()
+            self.wait(1.0)
+            self.click_tesoreria()
+            self.wait(self.cfg.wait_long * 2)
+            self.alt_p_o_g()
+            self.wait(self.cfg.wait_long)
 
     def soft_reset(self):
         """
@@ -1049,6 +1135,17 @@ def run_safix_with_excel(
             current=idx - 1,
             total=total_invoices,
         )
+        if not automator.is_main_window_open():
+            overlay.update(
+                etapa="AIVO: Recuperando sesión",
+                document_id="",
+                placa="",
+                current=idx - 1,
+                total=total_invoices,
+                extra="SAFIX cerrado. Reabriendo para continuar.",
+            )
+            print("[SAFIX][RECOVERY] Ventana principal cerrada. Reabriendo sesión.")
+            automator.bootstrap()
 
         doc_id = ""
         placa = ""
@@ -1263,13 +1360,8 @@ def run_safix_with_excel(
     if com_ctx is not None:
         com_ctx.__exit__(None, None, None)
 
-    # Cerrar SAFIX 
-    automator.click_images_sequence([
-        cfg.door_icon,
-    ],
-    timeout_per_image=15.0,
-    continue_on_error=False
-    )
+    # Cerrar sesión SAFIX (cierre controlado)
+    automator.close_session_for_night_pause()
 
     overlay.update(
         etapa="AIVO: Finalizado",
