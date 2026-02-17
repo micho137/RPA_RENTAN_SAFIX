@@ -4,7 +4,7 @@ import json
 import os
 import re
 import time
-from datetime import datetime
+from datetime import datetime, time as dt_time, timedelta
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -160,6 +160,93 @@ def _show_no_invoices_message():
         pass
 
 
+def _parse_hhmm(value: str, default: str) -> dt_time:
+    raw = (value or "").strip() or default
+    try:
+        hh, mm = raw.split(":", 1)
+        return dt_time(hour=int(hh), minute=int(mm), second=0)
+    except Exception:
+        hh, mm = default.split(":", 1)
+        return dt_time(hour=int(hh), minute=int(mm), second=0)
+
+
+def _is_in_pause_window(now: datetime, start_t: dt_time, resume_t: dt_time) -> bool:
+    now_t = now.time()
+    if start_t <= resume_t:
+        return start_t <= now_t < resume_t
+    return now_t >= start_t or now_t < resume_t
+
+
+def _next_resume_datetime(now: datetime, resume_t: dt_time) -> datetime:
+    resume_dt = now.replace(hour=resume_t.hour, minute=resume_t.minute, second=0, microsecond=0)
+    if now < resume_dt:
+        return resume_dt
+    return resume_dt + timedelta(days=1)
+
+
+def _pause_if_night_window(
+    *,
+    cfg: "SafixConfig",
+    automator: "SafixAutomator",
+    overlay: StatusOverlay,
+    current: int,
+    total: int,
+) -> None:
+    if not cfg.night_pause_enabled:
+        return
+
+    start_t = _parse_hhmm(cfg.night_pause_start, "23:00")
+    resume_t = _parse_hhmm(cfg.night_pause_resume, "01:00")
+    now = datetime.now()
+    if not _is_in_pause_window(now, start_t, resume_t):
+        return
+
+    resume_dt = _next_resume_datetime(now, resume_t)
+    resume_txt = resume_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+    overlay.update(
+        etapa="AIVO: Pausa nocturna",
+        document_id="",
+        placa="",
+        current=current,
+        total=total,
+        extra=f"Pausado hasta {resume_txt}",
+    )
+    print(f"[SAFIX] Pausa nocturna activa. Reanudando a las {resume_txt}.")
+
+    try:
+        automator.click_images_sequence(
+            [cfg.door_icon],
+            timeout_per_image=15.0,
+            continue_on_error=True,
+        )
+    except Exception:
+        pass
+
+    while True:
+        now = datetime.now()
+        if not _is_in_pause_window(now, start_t, resume_t):
+            break
+        remaining = int((resume_dt - now).total_seconds())
+        if remaining <= 0:
+            break
+        sleep_sec = min(max(5, cfg.night_pause_check_sec), remaining)
+        time.sleep(sleep_sec)
+
+    print("[SAFIX] Fin de pausa nocturna. Reabriendo SAFIX y retomando pendientes.")
+    overlay.update(
+        etapa="AIVO: Reanudando",
+        document_id="",
+        placa="",
+        current=current,
+        total=total,
+        extra="Reabriendo SAFIX para continuar.",
+    )
+    automator.bootstrap()
+    automator.refocus_main()
+    automator.wait(1.0)
+
+
 def load_plate_catalog_from_excel(excel_path: Path) -> Dict[str, Dict[str, str]]:
     """
     Lee el Excel y retorna un catálogo por placa:
@@ -278,8 +365,6 @@ class SafixConfig:
     z_icon: Path
     engranes_icon: Path
     door_icon: Path
-    conn_icon: Path
-    close_icon: Path
 
     # Credenciales / negocio
     user: str
@@ -313,6 +398,11 @@ class SafixConfig:
     error_dir: Path
     preflight_icons: bool
     screenshot_on_error: bool
+    night_pause_enabled: bool
+    night_pause_start: str
+    night_pause_resume: str
+    night_pause_check_sec: int
+    recover_session_on_error: bool
 
     @staticmethod
     def from_settings() -> "SafixConfig":
@@ -332,8 +422,6 @@ class SafixConfig:
             z_icon=_p("safix_z_icon"),
             engranes_icon=_p("safix_engranes_icon"),
             door_icon=_p("safix_door_icon"),
-            conn_icon=_p("safix_conn_icon"),
-            close_icon=_p("safix_close_icon"),
             user=str(getattr(settings, "safix_user", "") or "").strip(),
             password=str(getattr(settings, "safix_pass", "") or "").strip(),
             nit=str(getattr(settings, "safix_nit", "") or "").strip(),
@@ -359,6 +447,11 @@ class SafixConfig:
             error_dir=Path(getattr(settings, "safix_error_dir", "./output/errors")).resolve(),
             preflight_icons=bool(getattr(settings, "safix_preflight_icons", False)),
             screenshot_on_error=bool(getattr(settings, "safix_screenshot_on_error", True)),
+            night_pause_enabled=bool(getattr(settings, "safix_night_pause_enabled", False)),
+            night_pause_start=str(getattr(settings, "safix_night_pause_start", "23:00") or "23:00").strip(),
+            night_pause_resume=str(getattr(settings, "safix_night_pause_resume", "01:00") or "01:00").strip(),
+            night_pause_check_sec=max(5, int(getattr(settings, "safix_night_pause_check_sec", 30) or 30)),
+            recover_session_on_error=bool(getattr(settings, "safix_recover_session_on_error", True)),
         )
 
 
@@ -827,7 +920,7 @@ def run_safix_from_aggregated_json() -> None:
             automator.soft_reset()
 
         if cfg.breath_sec > 0:
-            time.sleep(cfg.breath_sec)
+            automator.wait(cfg.breath_sec)
 
     overlay.update(
         etapa="AIVO: Finalizado",
@@ -949,6 +1042,14 @@ def run_safix_with_excel(
     missing_plate = 0
 
     for idx, (key, invoice) in enumerate(items, start=1):
+        _pause_if_night_window(
+            cfg=cfg,
+            automator=automator,
+            overlay=overlay,
+            current=idx - 1,
+            total=total_invoices,
+        )
+
         doc_id = ""
         placa = ""
         total = None
@@ -1029,16 +1130,41 @@ def run_safix_with_excel(
                 extra=extra,
             )
 
-            automator.refocus_main()
-            automator.wait(0.6)
+            attempts = 2 if cfg.recover_session_on_error else 1
+            last_ex: Optional[Exception] = None
+            for attempt in range(1, attempts + 1):
+                try:
+                    automator.refocus_main()
+                    automator.wait(0.6)
+                    automator.procesar_factura(
+                        document_id=doc_id,
+                        placa=placa,
+                        interface=interface,
+                        centro_costos=centro_costos,
+                        peaje_total=int(total),
+                    )
+                    last_ex = None
+                    break
+                except Exception as proc_ex:
+                    last_ex = proc_ex
+                    if attempt >= attempts:
+                        break
+                    print(
+                        f"[SAFIX][RECOVERY] reintento {attempt}/{attempts - 1} "
+                        f"para doc_id={doc_id}: {proc_ex}"
+                    )
+                    overlay.update(
+                        etapa="AIVO: Recuperando sesión",
+                        document_id=doc_id,
+                        placa=placa,
+                        current=idx,
+                        total=total_invoices,
+                        extra="Reabriendo SAFIX para reintentar esta factura...",
+                    )
+                    automator.bootstrap()
 
-            automator.procesar_factura(
-                document_id=doc_id,
-                placa=placa,
-                interface=interface,
-                centro_costos=centro_costos,
-                peaje_total=int(total),
-            )
+            if last_ex is not None:
+                raise last_ex
 
             if mark_as_read and outlook_client is not None:
                 src_path = (invoice or {}).get("_source_path") if isinstance(invoice, dict) else None
@@ -1132,7 +1258,7 @@ def run_safix_with_excel(
             automator.soft_reset()
 
         if cfg.breath_sec > 0:
-            time.sleep(cfg.breath_sec)
+            automator.wait(cfg.breath_sec)
 
     if com_ctx is not None:
         com_ctx.__exit__(None, None, None)
@@ -1140,8 +1266,6 @@ def run_safix_with_excel(
     # Cerrar SAFIX 
     automator.click_images_sequence([
         cfg.door_icon,
-        cfg.conn_icon,
-        cfg.close_icon
     ],
     timeout_per_image=15.0,
     continue_on_error=False

@@ -94,8 +94,6 @@ class Settings:
     safix_z_icon: str = os.getenv("SAFIX_Z_ICON", "assets/Z.png")
     safix_engranes_icon: str = os.getenv("SAFIX_ENGRANES_ICON", "assets/engranes.png")
     safix_door_icon: str = os.getenv("SAFIX_DOOR_ICON", "assets/salir.png")
-    safix_conn_icon: str = os.getenv("SAFIX_CONN_ICON", "assets/conn.png")
-    safix_close_icon: str = os.getenv("SAFIX_CLOSE_ICON", "assets/close_conn.png")
 
     safix_user: str = os.getenv("SAFIX_USER", "")
     safix_pass: str = os.getenv("SAFIX_PASS", "")
@@ -129,6 +127,15 @@ class Settings:
     safix_error_dir: Path = Path(os.getenv("SAFIX_ERROR_DIR", "./output/errors")).resolve()
     safix_preflight_icons: bool = _env_bool("SAFIX_PREFLIGHT_ICONS", "false")
     safix_screenshot_on_error: bool = _env_bool("SAFIX_SCREENSHOT_ON_ERROR", "true")
+
+    # Ventana de pausa nocturna (entre facturas)
+    safix_night_pause_enabled: bool = _env_bool("SAFIX_NIGHT_PAUSE_ENABLED", "false")
+    safix_night_pause_start: str = os.getenv("SAFIX_NIGHT_PAUSE_START", "23:00").strip()
+    safix_night_pause_resume: str = os.getenv("SAFIX_NIGHT_PAUSE_RESUME", "01:00").strip()
+    safix_night_pause_check_sec: int = int(os.getenv("SAFIX_NIGHT_PAUSE_CHECK_SEC", "30") or 30)
+
+    # Recuperaci?n de sesi?n SAFIX si la app se cae/cierra
+    safix_recover_session_on_error: bool = _env_bool("SAFIX_RECOVER_SESSION_ON_ERROR", "true")
 
 
 settings = Settings()
