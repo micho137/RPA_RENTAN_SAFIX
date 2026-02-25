@@ -40,7 +40,7 @@ def main(page: ft.Page):
 
     def normalize_header(v) -> str:
         s = "" if v is None else str(v)
-        s = s.replace(" ", " ").strip()
+        s = s.replace("\xa0", " ").strip()
         s = " ".join(s.split())
         s = s.upper()
         s = "".join(ch for ch in unicodedata.normalize("NFKD", s) if not unicodedata.combining(ch))

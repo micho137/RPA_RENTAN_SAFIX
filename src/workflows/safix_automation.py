@@ -713,7 +713,7 @@ class SafixAutomator:
         self.wait(self.cfg.wait_default)
 
         pyautogui.press("s")
-        self.wait(self.cfg.wait_default)
+        self.wait(self.cfg.wait_long)
 
         self.click_image(self.cfg.conn_icon, timeout=15.0, interval=0.8)
         self.wait(self.cfg.wait_long)
@@ -1359,9 +1359,6 @@ def run_safix_with_excel(
 
     if com_ctx is not None:
         com_ctx.__exit__(None, None, None)
-
-    # Cerrar sesión SAFIX (cierre controlado)
-    automator.close_session_for_night_pause()
 
     overlay.update(
         etapa="AIVO: Finalizado",
