@@ -54,6 +54,14 @@ class FakeItemsCollection:
                     for item in filtered
                     if item.ReceivedTime.replace(tzinfo=None) >= since
                 ]
+            elif clause.startswith("[ReceivedTime] <"):
+                raw = clause.split("<", 1)[1].strip().strip("'")
+                until_exclusive = datetime.strptime(raw, "%m/%d/%Y %I:%M %p")
+                filtered = [
+                    item
+                    for item in filtered
+                    if item.ReceivedTime.replace(tzinfo=None) < until_exclusive
+                ]
             elif clause == "[UnRead] = True":
                 filtered = [item for item in filtered if item.UnRead]
 
@@ -139,3 +147,35 @@ def test_print_today_and_yesterday_mails(monkeypatch) -> None:
 
     assert today == ["hoy-1", "hoy-2"]
     assert yesterday == ["ayer-1"]
+
+
+def test_iter_items_filters_exact_date_range(monkeypatch) -> None:
+    fixed_now = datetime(2026, 2, 25, 12, 0, tzinfo=tzlocal())
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now if tz is not None else fixed_now.replace(tzinfo=None)
+
+    monkeypatch.setattr(outlook_client_module, "datetime", FixedDateTime)
+
+    folder = FakeFolder(
+        [
+            FakeMailItem("day-25", fixed_now - timedelta(hours=2), unread=True),
+            FakeMailItem("day-24", fixed_now - timedelta(days=1, hours=1), unread=True),
+            FakeMailItem("day-23", fixed_now - timedelta(days=2), unread=True),
+        ]
+    )
+    client = _build_client_without_com()
+
+    out = list(
+        client.iter_items(
+            folder,
+            days_back=0,
+            only_unread=False,
+            date_from=datetime(2026, 2, 24).date(),
+            date_to=datetime(2026, 2, 25).date(),
+        )
+    )
+
+    assert [x.Subject for x in out] == ["day-25", "day-24"]

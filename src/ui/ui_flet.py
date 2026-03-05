@@ -1,4 +1,5 @@
 import threading
+from datetime import date, datetime
 from pathlib import Path
 import unicodedata
 
@@ -81,6 +82,16 @@ def main(page: ft.Page):
             return False, f"No se pudo leer el Excel. Detalle: {ex}"
 
     selected_file_txt = ft.Text(value="", selectable=True, text_align=ft.TextAlign.CENTER)
+    date_from_tf = ft.TextField(
+        label="Desde (YYYY-MM-DD)",
+        hint_text="2026-02-20",
+        width=260,
+    )
+    date_to_tf = ft.TextField(
+        label="Hasta (YYYY-MM-DD)",
+        hint_text="2026-02-25",
+        width=260,
+    )
     status = ft.TextField(
         value="",
         read_only=True,
@@ -98,6 +109,34 @@ def main(page: ft.Page):
         status.color = ft.Colors.RED_700 if is_error else ft.Colors.GREEN_700
         page.update()
 
+    def parse_date_or_none(raw: str) -> date | None:
+        value = (raw or "").strip()
+        if not value:
+            return None
+        return datetime.strptime(value, "%Y-%m-%d").date()
+
+    def validate_date_inputs() -> tuple[bool, str]:
+        raw_from = (date_from_tf.value or "").strip()
+        raw_to = (date_to_tf.value or "").strip()
+
+        if bool(raw_from) ^ bool(raw_to):
+            return False, "Debe diligenciar ambas fechas: Desde y Hasta."
+
+        if not raw_from and not raw_to:
+            return True, ""
+
+        try:
+            d_from = parse_date_or_none(raw_from)
+            d_to = parse_date_or_none(raw_to)
+        except ValueError:
+            return False, "Formato de fecha invalido. Use YYYY-MM-DD."
+
+        if d_from is None or d_to is None:
+            return False, "Debe diligenciar ambas fechas: Desde y Hasta."
+        if d_to < d_from:
+            return False, "La fecha Hasta no puede ser menor que Desde."
+        return True, ""
+
     def refresh(_=None):
         excel_path = (selected_file_txt.value or "").strip()
         if not excel_path:
@@ -110,6 +149,12 @@ def main(page: ft.Page):
         if not ok:
             run_btn.disabled = True
             set_status(err, is_error=True)
+            return
+
+        ok_dates, err_dates = validate_date_inputs()
+        if not ok_dates:
+            run_btn.disabled = True
+            set_status(err_dates, is_error=True)
         else:
             run_btn.disabled = False
             status.value = ""
@@ -117,6 +162,9 @@ def main(page: ft.Page):
 
     def run_job(excel_path_str: str):
         try:
+            date_from = parse_date_or_none((date_from_tf.value or "").strip())
+            date_to = parse_date_or_none((date_to_tf.value or "").strip())
+
             set_status("Ejecutando pipeline (descarga, extraccion, agregacion y SAFIX)...")
             run_pipeline(
                 output_dir=None,
@@ -127,6 +175,8 @@ def main(page: ft.Page):
                 run_safix=True,
                 only_unread=only_unread_default,
                 days_back=days_back_default,
+                date_from=date_from,
+                date_to=date_to,
                 mark_as_read=mark_as_read_default,
             )
             set_status("Proceso finalizado correctamente. Pipeline + SAFIX ejecutados.")
@@ -148,6 +198,10 @@ def main(page: ft.Page):
         ok, err = validate_excel_file(excel_path_str)
         if not ok:
             set_status(err, is_error=True)
+            return
+        ok_dates, err_dates = validate_date_inputs()
+        if not ok_dates:
+            set_status(err_dates, is_error=True)
             return
 
         run_btn.disabled = True
@@ -186,6 +240,10 @@ def main(page: ft.Page):
                     ft.Text("Carga de archivo", size=22, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER),
                     load_excel_btn,
                     selected_file_txt,
+                    ft.Row(
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        controls=[date_from_tf, date_to_tf],
+                    ),
                     run_btn,
                     status,
                 ],
@@ -193,6 +251,8 @@ def main(page: ft.Page):
         )
     )
 
+    date_from_tf.on_change = refresh
+    date_to_tf.on_change = refresh
     refresh()
 
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime
 import hashlib, re
 import json
 from .client import OutlookClient
@@ -23,9 +23,26 @@ class OutlookService:
         self.log.info(f"Using store: {store.DisplayName} | folder: {'/'.join(folder_path)}")
         return folder, store
 
-    def list_messages(self, folder, days_back=0, only_unread=False, limit=200):
+    def list_messages(
+        self,
+        folder,
+        days_back=0,
+        only_unread=False,
+        limit=200,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ):
         out: list[MailSummary] = []
-        for idx, item in enumerate(self.c.iter_items(folder, days_back, only_unread), start=1):
+        for idx, item in enumerate(
+            self.c.iter_items(
+                folder,
+                days_back=days_back,
+                only_unread=only_unread,
+                date_from=date_from,
+                date_to=date_to,
+            ),
+            start=1,
+        ):
             if idx > limit: break
             out.append(MailSummary(
                 entry_id=getattr(item, "EntryID", ""),
@@ -37,8 +54,17 @@ class OutlookService:
         self.log.info(f"Messages listed: {len(out)}")
         return out
 
-    def save_attachments(self, folder, out_dir: Path, days_back=0, only_unread=False,
-                         mark_as_read=True, move_to=None) -> SaveResult:
+    def save_attachments(
+        self,
+        folder,
+        out_dir: Path,
+        days_back=0,
+        only_unread=False,
+        mark_as_read=True,
+        move_to=None,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ) -> SaveResult:
         out_dir.mkdir(parents=True, exist_ok=True)
         res = SaveResult(out_dir=out_dir)
         manifest_path = out_dir / "_manifest.json"
@@ -49,7 +75,13 @@ class OutlookService:
             except Exception:
                 manifest = {}
 
-        for item in self.c.iter_items(folder, days_back, only_unread):
+        for item in self.c.iter_items(
+            folder,
+            days_back=days_back,
+            only_unread=only_unread,
+            date_from=date_from,
+            date_to=date_to,
+        ):
             subj = (getattr(item, "Subject", "") or "")[:80]
             self.log.info(f"Processing: {subj!r}")
 

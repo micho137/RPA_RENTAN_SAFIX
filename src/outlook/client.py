@@ -1,6 +1,6 @@
 from __future__ import annotations
 import win32com.client
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from dateutil.tz import tzlocal
 from typing import Iterable
 
@@ -22,15 +22,20 @@ class OutlookClient:
         return folder
 
     # Items + filtros
-    def iter_items(self, folder, days_back: int = 0, only_unread: bool = False):
+    def iter_items(
+        self,
+        folder,
+        days_back: int = 0,
+        only_unread: bool = False,
+        date_from: date | None = None,
+        date_to: date | None = None,
+    ):
         items = folder.Items
         items.Sort("[ReceivedTime]", True)
 
+        # Mantener Restrict solo para UnRead: es estable entre locales.
+        # El filtro de fechas se aplica en Python para evitar errores por formato regional.
         filters = []
-        if days_back > 0:
-            since = (datetime.now(tzlocal()) - timedelta(days=days_back))
-            since_str = since.strftime("%m/%d/%Y %I:%M %p")
-            filters.append(f"[ReceivedTime] >= '{since_str}'")
         if only_unread:
             filters.append("[UnRead] = True")
         if filters:
@@ -39,7 +44,29 @@ class OutlookClient:
         # Colección MAPI es 1-based. Hacemos snapshot para evitar
         # "index out of range" cuando se marca como leído y cambia el filtro.
         snapshot = [items.Item(i) for i in range(1, items.Count + 1)]
+
+        local_tz = tzlocal()
+        if date_from is not None and date_to is not None:
+            since = datetime.combine(date_from, datetime.min.time()).replace(tzinfo=local_tz)
+            until_exclusive = datetime.combine(date_to + timedelta(days=1), datetime.min.time()).replace(tzinfo=local_tz)
+        elif days_back > 0:
+            since = (datetime.now(local_tz) - timedelta(days=days_back))
+            until_exclusive = None
+        else:
+            since = None
+            until_exclusive = None
+
         for item in snapshot:
+            if since is not None:
+                received = getattr(item, "ReceivedTime", None)
+                if received is None:
+                    continue
+                if received.tzinfo is None:
+                    received = received.replace(tzinfo=local_tz)
+                if received < since:
+                    continue
+                if until_exclusive is not None and received >= until_exclusive:
+                    continue
             yield item
 
     def get_item_by_id(self, entry_id: str):

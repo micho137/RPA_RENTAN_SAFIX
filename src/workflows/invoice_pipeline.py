@@ -1,6 +1,7 @@
 # src/workflows/invoice_pipeline.py
 from pathlib import Path
 import shutil
+from datetime import date
 
 from src.config import settings
 from src.core.logging_config import setup_logger
@@ -41,6 +42,8 @@ def run_pipeline(
     # ✅ flags dinámicos (UI)
     only_unread: bool = False,
     days_back: int = 0,
+    date_from: date | None = None,
+    date_to: date | None = None,
     mark_as_read: bool = False,
     move_to_processed: bool = False,
 ):
@@ -77,8 +80,8 @@ def run_pipeline(
     # ---------- 1) Descargar adjuntos ----------
     logger.info("Downloading attachments from Outlook...")
     logger.info(
-        "[PIPE][FLAGS] only_unread=%s days_back=%s mark_as_read=%s move_to_processed=%s",
-        only_unread, days_back, mark_as_read, move_to_processed
+        "[PIPE][FLAGS] only_unread=%s days_back=%s date_from=%s date_to=%s mark_as_read=%s move_to_processed=%s",
+        only_unread, days_back, date_from, date_to, mark_as_read, move_to_processed
     )
 
     dl = run_download(
@@ -86,6 +89,8 @@ def run_pipeline(
         only_unread=only_unread,
         mark_as_read=False,
         move_to_processed=move_to_processed,
+        date_from=date_from,
+        date_to=date_to,
     )
     logger.info("Download done: processed=%s | saved=%s", dl.processed, dl.attachments_saved)
 
