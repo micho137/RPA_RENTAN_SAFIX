@@ -112,6 +112,16 @@ class OutlookService:
 
             if mark_as_read:
                 self.c.mark_as_read(item)
+            else:
+                # Acceder a adjuntos via COM puede causar que Outlook
+                # auto-marque el correo como leído. Revertimos ese cambio
+                # para que no-leídos sigan disponibles en corridas futuras.
+                try:
+                    if not getattr(item, "UnRead", True):
+                        item.UnRead = True
+                        item.Save()
+                except Exception:
+                    pass
             if move_to is not None:
                 self.c.move_to(item, move_to)
 

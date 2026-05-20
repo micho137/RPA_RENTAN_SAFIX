@@ -7,7 +7,7 @@ import time
 from datetime import datetime, time as dt_time, timedelta
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pyautogui
 from openpyxl import load_workbook
@@ -86,15 +86,60 @@ def load_invoices_from_json_dir(json_root: Path) -> Dict[str, Any]:
     return out
 
 
-def load_attachment_manifest(download_dir: Path) -> Dict[str, str]:
+def load_attachment_manifest(download_dir: Path) -> Dict[str, List[str]]:
+    """
+    Carga el manifest de adjuntos y normaliza valores a listas de entry_ids.
+    - Claves vacías son ignoradas.
+    - Valores string se envuelven en lista.
+    - Valores lista se deduplicam y filtran cadenas vacías.
+    - Valores que no son str ni list se excluyen.
+    """
     path = Path(download_dir) / "_manifest.json"
     if not path.exists():
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict):
+            return {}
+        out: Dict[str, List[str]] = {}
+        for k, v in data.items():
+            if not k:  # ignorar claves vacías
+                continue
+            if isinstance(v, str):
+                ids: List[str] = [v] if v else []
+            elif isinstance(v, list):
+                seen: List[str] = []
+                seen_set: set = set()
+                for item in v:
+                    if isinstance(item, str) and item and item not in seen_set:
+                        seen.append(item)
+                        seen_set.add(item)
+                ids = seen
+            else:
+                continue  # ignorar valores no str/list (ej: enteros)
+            if ids:
+                out[k] = ids
+        return out
     except Exception:
         return {}
+
+
+def _manifest_entry_ids_for_invoice(
+    invoice: Dict[str, Any],
+    manifest: Dict[str, List[str]],
+    extract_root: Optional[Path] = None,
+) -> List[str]:
+    """
+    Retorna los entry_ids del manifest para la factura dada,
+    resolviendo el zip_stem desde el _source_path del invoice.
+    """
+    src_path = (invoice or {}).get("_source_path")
+    if not src_path:
+        return []
+    zip_stem = _zip_stem_from_source_path(str(src_path), extract_root)
+    if not zip_stem:
+        return []
+    return list(manifest.get(zip_stem) or [])
 
 
 def _zip_stem_from_source_path(source_path: str, extract_root: Optional[Path] = None) -> Optional[str]:
@@ -1170,9 +1215,15 @@ def run_safix_with_excel(
             row = plate_catalog.get(placa)
             if not row:
                 missing_plate += 1
-                interface = ""
-                centro_costos = ""
                 extra = f"placa no está en catálogo | total={total}"
+                overlay.update(
+                    etapa="AIVO: OMITIDA",
+                    document_id=doc_id,
+                    placa=placa,
+                    current=idx,
+                    total=total_invoices,
+                    extra="Omitida: placa no en catálogo",
+                )
                 if tracker is not None:
                     miss_row = tracker.add_missing_plate(
                         document_id=doc_id,
@@ -1182,6 +1233,9 @@ def run_safix_with_excel(
                         error="placa no está en catálogo",
                     )
                     tracker.append_missing_plate_row(miss_row)
+                # No procesar en SAFIX ni marcar como OK para permitir reintento
+                # cuando la placa sea agregada al Excel
+                continue
             else:
                 if str(row.get("doble_cc", "")).strip().upper() == "X":
                     missing_plate += 1
@@ -1264,15 +1318,18 @@ def run_safix_with_excel(
                 raise last_ex
 
             if mark_as_read and outlook_client is not None:
-                src_path = (invoice or {}).get("_source_path") if isinstance(invoice, dict) else None
-                zip_stem = _zip_stem_from_source_path(str(src_path), run_extract_root) if src_path else None
-                entry_id = manifest.get(zip_stem) if zip_stem else None
-                if entry_id and entry_id not in marked_entry_ids:
-                    try:
-                        outlook_client.mark_as_read_by_id(entry_id)
-                        marked_entry_ids.add(entry_id)
-                    except Exception:
-                        pass
+                entry_ids = _manifest_entry_ids_for_invoice(
+                    invoice if isinstance(invoice, dict) else {},
+                    manifest,
+                    run_extract_root,
+                )
+                for entry_id in entry_ids:
+                    if entry_id not in marked_entry_ids:
+                        try:
+                            outlook_client.mark_as_read_by_id(entry_id)
+                            marked_entry_ids.add(entry_id)
+                        except Exception:
+                            pass
 
             t_end = datetime.now().isoformat(timespec="seconds")
             progress_store.mark_processed(

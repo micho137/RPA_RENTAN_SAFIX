@@ -75,6 +75,7 @@ DOWNLOAD_DIR=./downloads
 LOG_DIR=./src/logs
 OUTPUT_DIR=./output
 ENABLE_CLEANUP=false
+DOC_ID_VALID_SERIES=DEFL,FPFL
 ```
 
 SAFIX:

@@ -142,7 +142,7 @@ def _to_qty_float(num: Optional[str]) -> float:
 
 def _remove_hyphen_in_id(doc_id: Optional[str]) -> Optional[str]:
     """
-    Convierte DEFL-123 -> DEFL123 y DENC-123 -> DENC123
+    Convierte SERIE-123 -> SERIE123.
     Si ya está sin guion, lo deja igual.
     """
     if not doc_id:
@@ -358,7 +358,7 @@ class ZipInvoiceExtractor:
             "detalle": [],
         }
 
-        # Doc ID (DEFL/DENC con o sin guion)
+        # Doc ID (series configuradas en DOC_ID_VALID_SERIES, con o sin guion)
         found = parse_any_id(txt)
         if found:
             serie, numero, norm = found

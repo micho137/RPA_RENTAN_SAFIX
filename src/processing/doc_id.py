@@ -1,16 +1,35 @@
 from __future__ import annotations
+import os
 import re
 from typing import Optional, Tuple
+from dotenv import load_dotenv
 
-VALID_SERIES = {"DEFL", "DENC"}
+load_dotenv()
 
-# Match "DEFL" o "DENC" con o sin guion y 8 dígitos
-DOC_ID_RE = re.compile(r"\b(?P<serie>DEFL|DENC)-?(?P<num>\d{8})\b", re.IGNORECASE)
+
+def _load_valid_series() -> tuple[str, ...]:
+    raw = os.getenv("DOC_ID_VALID_SERIES", "DEFL,FPFL")
+    items = [x.strip().upper() for x in str(raw).split(",")]
+    items = [x for x in items if x]
+    if not items:
+        items = ["DEFL", "FPFL"]
+    seen = set()
+    ordered: list[str] = []
+    for s in items:
+        if s not in seen:
+            seen.add(s)
+            ordered.append(s)
+    return tuple(ordered)
+
+
+VALID_SERIES = set(_load_valid_series())
+_SERIES_PATTERN = "|".join(re.escape(s) for s in sorted(VALID_SERIES, key=len, reverse=True))
+DOC_ID_RE = re.compile(rf"\b(?P<serie>{_SERIES_PATTERN})-?(?P<num>\d{{8}})\b", re.IGNORECASE)
 
 def parse_any_id(raw: str) -> Optional[Tuple[str, str, str]]:
     """
     Dada una cadena, extrae (serie, numero, document_id_normalizado).
-    document_id_normalizado siempre con guion: 'DEFL-########' o 'DENC-########'.
+    document_id_normalizado siempre con guion: 'SERIE-########'.
     """
     if not raw:
         return None
